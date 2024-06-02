@@ -16,29 +16,58 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 #include "engine.h"
 #include "file.h"
 #include "serializer.h"
 #include "sys.h"
 #include "parts.h"
 
+static constexpr uint32_t AWSV = (static_cast<uint32_t>('A') << 24)
+		                       | (static_cast<uint32_t>('W') << 16)
+		                       | (static_cast<uint32_t>('S') <<  8)
+		                       | (static_cast<uint32_t>('V') <<  0)
+		                       ;
+
+static void engineMainLoop(Engine* engine) {
+
+	engine->vm.checkThreadRequests();
+
+	engine->vm.inp_updatePlayer();
+
+	engine->processInput();
+
+	engine->vm.hostFrame();
+
+#ifdef __EMSCRIPTEN__
+	if (engine->sys->input.quit) {
+		engine = (delete engine, nullptr);
+		emscripten_cancel_main_loop();
+		emscripten_force_exit(EXIT_SUCCESS);
+	}
+#endif
+
+}
+
 Engine::Engine(System *paramSys, const char *dataDir, const char *saveDir)
 	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir), 
 	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _saveDir(saveDir), _stateSlot(0) {
+	init();
 }
 
 void Engine::run() {
 
+#ifdef __EMSCRIPTEN__
+	emscripten_set_main_loop_arg(reinterpret_cast<em_arg_callback_func>(&engineMainLoop), this, 0, 1);
+#else
 	while (!sys->input.quit) {
 
-		vm.checkThreadRequests();
+		engineMainLoop(this);
 
-		vm.inp_updatePlayer();
-
-		processInput();
-
-		vm.hostFrame();
 	}
+#endif
 
 
 }
@@ -46,7 +75,6 @@ void Engine::run() {
 Engine::~Engine(){
 
 	finish();
-	sys->destroy();
 }
 
 
@@ -92,6 +120,7 @@ void Engine::finish() {
 	player.free();
 	mixer.free();
 	res.freeMemBlock();
+	sys->destroy();
 }
 
 void Engine::processInput() {
@@ -125,7 +154,7 @@ void Engine::saveGameState(uint8_t slot, const char *desc) {
 		warning("Unable to save state file '%s'", stateFile);
 	} else {
 		// header
-		f.writeUint32BE('AWSV');
+		f.writeUint32BE(AWSV);
 		f.writeUint16BE(Serializer::CUR_VER);
 		f.writeUint16BE(0);
 		char hdrdesc[32];
@@ -154,7 +183,7 @@ void Engine::loadGameState(uint8_t slot) {
 		warning("Unable to open state file '%s'", stateFile);
 	} else {
 		uint32_t id = f.readUint32BE();
-		if (id != 'AWSV') {
+		if (id != AWSV) {
 			warning("Bad savegame format");
 		} else {
 			// mute

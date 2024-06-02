@@ -57,6 +57,8 @@
        #define SYS_LITTLE_ENDIAN
     #elif defined(__mips__) || defined(__mips) || defined(__MIPS__)
        #define SYS_BIG_ENDIAN 
+    #elif defined(__EMSCRIPTEN__)
+       #define SYS_LITTLE_ENDIAN
     #else
        #warning "Unknown architecture detected..."
     #endif

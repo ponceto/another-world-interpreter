@@ -16,6 +16,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
+#include <memory>
 #include "engine.h"
 #include "sys.h"
 #include "util.h"
@@ -24,8 +25,8 @@
 static const char *USAGE = 
 	"Raw - Another World Interpreter\n"
 	"Usage: raw [OPTIONS]...\n"
-	"  --datapath=PATH   Path to where the game is installed (default '.')\n"
-	"  --savepath=PATH   Path to where the save files are stored (default '.')\n";
+	"  --datapath=PATH   Path to where the game is installed (default './assets')\n"
+	"  --savepath=PATH   Path to where the save files are stored (default './assets')\n";
 
 static bool parseOption(const char *arg, const char *longCmd, const char **opt) {
 	bool ret = false;
@@ -38,6 +39,14 @@ static bool parseOption(const char *arg, const char *longCmd, const char **opt) 
 	return ret;
 }
 
+static int run(System *system, const char *dataPath, const char *savePath) {
+	const std::unique_ptr<Engine> engine(new Engine(system, dataPath, savePath));
+	if(engine) {
+		engine->run();
+	}
+	return EXIT_SUCCESS;
+}
+
 /*
 	We use here a design pattern found in Doom3:
 	An Abstract Class pointer pointing to the implementation on the Heap.
@@ -45,10 +54,13 @@ static bool parseOption(const char *arg, const char *longCmd, const char **opt) 
 //extern System *System_SDL_create();
 extern System *stub ;//= System_SDL_create();
 
+#ifdef main
 #undef main
+#endif
+
 int main(int argc, char *argv[]) {
-	const char *dataPath = ".";
-	const char *savePath = ".";
+	const char *dataPath = "./assets";
+	const char *savePath = "./assets";
 	for (int i = 1; i < argc; ++i) {
 		bool opt = false;
 		if (strlen(argv[i]) >= 2) {
@@ -64,17 +76,8 @@ int main(int argc, char *argv[]) {
 	//FCS
 	//g_debugMask = DBG_INFO; // DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND
 	//g_debugMask = 0 ;//DBG_INFO |  DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND ;
-	
-	Engine* e = new Engine(stub, dataPath, savePath);
-	e->init();
-	e->run();
 
-
-	delete e;
-
-	//delete stub;
-
-	return 0;
+	return run(stub, dataPath, savePath);
 }
 
 

@@ -38,14 +38,14 @@ void SfxPlayer::free() {
 
 void SfxPlayer::setEventsDelay(uint16_t delay) {
 	debug(DBG_SND, "SfxPlayer::setEventsDelay(%d)", delay);
-	MutexStack(sys, _mutex);
+	const MutexStack lock(sys, _mutex);
 	_delay = delay * 60 / 7050;
 }
 
 void SfxPlayer::loadSfxModule(uint16_t resNum, uint16_t delay, uint8_t pos) {
 
 	debug(DBG_SND, "SfxPlayer::loadSfxModule(0x%X, %d, %d)", resNum, delay, pos);
-	MutexStack(sys, _mutex);
+	const MutexStack lock(sys, _mutex);
 
 
 	MemEntry *me = &res->_memList[resNum];
@@ -97,14 +97,14 @@ void SfxPlayer::prepareInstruments(const uint8_t *p) {
 
 void SfxPlayer::start() {
 	debug(DBG_SND, "SfxPlayer::start()");
-	MutexStack(sys, _mutex);
+	const MutexStack lock(sys, _mutex);
 	_sfxMod.curPos = 0;
 	_timerId = sys->addTimer(_delay, eventsCallback, this);			
 }
 
 void SfxPlayer::stop() {
 	debug(DBG_SND, "SfxPlayer::stop()");
-	MutexStack(sys, _mutex);
+	const MutexStack lock(sys, _mutex);
 	if (_resNum != 0) {
 		_resNum = 0;
 		sys->removeTimer(_timerId);
@@ -112,7 +112,7 @@ void SfxPlayer::stop() {
 }
 
 void SfxPlayer::handleEvents() {
-	MutexStack(sys, _mutex);
+	const MutexStack lock(sys, _mutex);
 	uint8_t order = _sfxMod.orderTable[_sfxMod.curOrder];
 	const uint8_t *patternData = _sfxMod.data + _sfxMod.curPos + order * 1024;
 	for (uint8_t ch = 0; ch < 4; ++ch) {

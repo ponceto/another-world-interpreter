@@ -1,0 +1,165 @@
+#
+# Makefile.wasm - Copyright (c) 2024 - Olivier Poncet
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# ----------------------------------------------------------------------------
+# global environment
+# ----------------------------------------------------------------------------
+
+OPTLEVEL = -O2
+WARNINGS = -Wall
+EXTRAS   = -pthread -sUSE_SDL=2 -sUSE_ZLIB=1 -sUSE_PTHREADS=1
+CC       = emcc
+CFLAGS   = -std=c99 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
+CXX      = em++
+CXXFLAGS = -std=c++14 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
+CPPFLAGS = -I. -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -DAUTO_DETECT_PLATFORM -DBYPASS_PROTECTION
+LD       = em++
+LDFLAGS  = -L.
+CP       = cp
+CPFLAGS  = -f
+RM       = rm
+RMFLAGS  = -f
+
+# ----------------------------------------------------------------------------
+# default rules
+# ----------------------------------------------------------------------------
+
+.c.o :
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
+
+.cc.o :
+	$(CXX) -c $(CXXFLAGS) $(CPPFLAGS) $<
+
+# ----------------------------------------------------------------------------
+# global targets
+# ----------------------------------------------------------------------------
+
+all : build
+
+build : build_another_world
+	@echo "=== $@ ok ==="
+
+clean : clean_another_world
+	@echo "=== $@ ok ==="
+
+# ----------------------------------------------------------------------------
+# another world files
+# ----------------------------------------------------------------------------
+
+another_world_PROGRAM = another-world.html
+
+another_world_SOURCES = \
+	bank.cc \
+	engine.cc \
+	file.cc \
+	mixer.cc \
+	parts.cc \
+	resource.cc \
+	serializer.cc \
+	sfxplayer.cc \
+	staticres.cc \
+	sysImplementation.cc \
+	util.cc \
+	video.cc \
+	vm.cc \
+	main.cc \
+	$(NULL)
+
+another_world_HEADERS = \
+	bank.h \
+	endian.h \
+	engine.h \
+	file.h \
+	intern.h \
+	mixer.h \
+	parts.h \
+	resource.h \
+	serializer.h \
+	sfxplayer.h \
+	sys.h \
+	util.h \
+	video.h \
+	vm.h \
+	$(NULL)
+
+another_world_OBJECTS = \
+	bank.o \
+	engine.o \
+	file.o \
+	mixer.o \
+	parts.o \
+	resource.o \
+	serializer.o \
+	sfxplayer.o \
+	staticres.o \
+	sysImplementation.o \
+	util.o \
+	video.o \
+	vm.o \
+	main.o \
+	$(NULL)
+
+another_world_LDFLAGS = \
+	--use-preload-plugins \
+	--preload-file assets/BANK01 \
+	--preload-file assets/BANK02 \
+	--preload-file assets/BANK03 \
+	--preload-file assets/BANK04 \
+	--preload-file assets/BANK05 \
+	--preload-file assets/BANK06 \
+	--preload-file assets/BANK07 \
+	--preload-file assets/BANK08 \
+	--preload-file assets/BANK09 \
+	--preload-file assets/BANK0A \
+	--preload-file assets/BANK0B \
+	--preload-file assets/BANK0C \
+	--preload-file assets/BANK0D \
+	--preload-file assets/MEMLIST.BIN \
+	$(NULL)
+
+another_world_LDADD = \
+	-lSDL2 \
+	-lz \
+	$(NULL)
+
+another_world_CLEANFILES = \
+	another-world.bin \
+	another-world.data \
+	another-world.html \
+	another-world.wasm \
+	another-world.js \
+	$(NULL)
+
+# ----------------------------------------------------------------------------
+# build another-world
+# ----------------------------------------------------------------------------
+
+build_another_world : $(another_world_PROGRAM)
+
+$(another_world_PROGRAM) : $(another_world_OBJECTS)
+	$(LD) $(LDFLAGS) $(another_world_LDFLAGS) -o $(another_world_PROGRAM) $(another_world_OBJECTS) $(another_world_LDADD)
+
+# ----------------------------------------------------------------------------
+# clean another-world
+# ----------------------------------------------------------------------------
+
+clean_another_world :
+	$(RM) $(RMFLAGS) $(another_world_OBJECTS) $(another_world_CLEANFILES)
+
+# ----------------------------------------------------------------------------
+# End-Of-File
+# ----------------------------------------------------------------------------
