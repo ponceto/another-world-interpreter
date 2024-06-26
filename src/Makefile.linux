@@ -38,22 +38,22 @@ RMFLAGS  = -f
 # default rules
 # ----------------------------------------------------------------------------
 
-.c.o :
+.c.o:
 	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
 
-.cc.o :
+.cc.o:
 	$(CXX) -c $(CXXFLAGS) $(CPPFLAGS) $<
 
 # ----------------------------------------------------------------------------
 # global targets
 # ----------------------------------------------------------------------------
 
-all : build
+all: build
 
-build : build_another_world
+build: build_another_world
 	@echo "=== $@ ok ==="
 
-clean : clean_another_world
+clean: clean_another_world
 	@echo "=== $@ ok ==="
 
 # ----------------------------------------------------------------------------
@@ -133,16 +133,16 @@ another_world_CLEANFILES = \
 # build another-world
 # ----------------------------------------------------------------------------
 
-build_another_world : $(another_world_PROGRAM)
+build_another_world: $(another_world_PROGRAM)
 
-$(another_world_PROGRAM) : $(another_world_OBJECTS)
+$(another_world_PROGRAM): $(another_world_OBJECTS)
 	$(LD) $(LDFLAGS) $(another_world_LDFLAGS) -o $(another_world_PROGRAM) $(another_world_OBJECTS) $(another_world_LDADD)
 
 # ----------------------------------------------------------------------------
 # clean another-world
 # ----------------------------------------------------------------------------
 
-clean_another_world :
+clean_another_world:
 	$(RM) $(RMFLAGS) $(another_world_OBJECTS) $(another_world_CLEANFILES)
 
 # ----------------------------------------------------------------------------
