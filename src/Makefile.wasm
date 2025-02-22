@@ -21,7 +21,7 @@
 
 OPTLEVEL = -O2
 WARNINGS = -Wall
-EXTRAS   = -pthread -sUSE_SDL=2 -sUSE_ZLIB=1 -sUSE_PTHREADS=1
+EXTRAS   = -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -sUSE_ZLIB=1 -sUSE_PTHREADS=1
 CC       = emcc
 CFLAGS   = -std=c99 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
 CXX      = em++
