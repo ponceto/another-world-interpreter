@@ -1,5 +1,5 @@
 /*
- * mixer.h - Copyright (c) 2004-2025
+ * music.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,30 +16,30 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_MIXER_H__
-#define __AW_MIXER_H__
+#ifndef __AW_MUSIC_H__
+#define __AW_MUSIC_H__
 
 #include "intern.h"
 
 // ---------------------------------------------------------------------------
-// Mixer
+// Music
 // ---------------------------------------------------------------------------
 
-class Mixer final
+class Music final
     : public SubSystem
 {
 public: // public interface
-    Mixer(Engine& engine, Audio& audio);
+    Music(Engine& engine, Audio& audio);
 
-    Mixer(Mixer&&) = delete;
+    Music(Music&&) = delete;
 
-    Mixer(const Mixer&) = delete;
+    Music(const Music&) = delete;
 
-    Mixer& operator=(Mixer&&) = delete;
+    Music& operator=(Music&&) = delete;
 
-    Mixer& operator=(const Mixer&) = delete;
+    Music& operator=(const Music&) = delete;
 
-    virtual ~Mixer() = default;
+    virtual ~Music() = default;
 
     virtual auto start() -> void override final;
 
@@ -47,34 +47,34 @@ public: // public interface
 
     virtual auto stop() -> void override final;
 
-public: // public mixer interface
-    auto playAllChannels() -> void;
+public: // public music interface
+    auto playMusic(uint16_t music_id, uint8_t index, uint16_t ticks) -> void;
 
-    auto stopAllChannels() -> void;
-
-    auto playChannel(uint8_t channel, const AudioSample& sample) -> void;
-
-    auto stopChannel(uint8_t channel) -> void;
-
-    auto setChannelVolume(uint8_t channel, uint8_t volume) -> void;
+    auto stopMusic() -> void;
 
 private: // private interface
-    auto startAudio() -> void;
+    auto startTimer() -> void;
 
-    auto resetAudio() -> void;
+    auto resetTimer() -> void;
 
-    auto stopAudio() -> void;
+    auto stopTimer() -> void;
 
-    auto processAudio(float* buffer, int length) -> void;
+    auto processTimer() -> uint32_t;
+
+    auto playMusicUnlocked(uint16_t id, uint8_t index, uint16_t ticks) -> void;
+
+    auto stopMusicUnlocked() -> void;
+
+    auto processPattern(uint8_t channel, Data& data) -> void;
 
 private: // private data
-    Audio&       _audio;
-    AudioChannel _channels[4];
-    uint32_t     _samplerate;
+    Audio&      _audio;
+    MusicModule _module;
+    int         _timer;
 };
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_MIXER_H__ */
+#endif /* __AW_MUSIC_H__ */

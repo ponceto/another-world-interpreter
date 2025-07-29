@@ -1,5 +1,5 @@
 #
-# Makefile.linux - Copyright (c) 2024-2025 - Olivier Poncet
+# Makefile.wasm - Copyright (c) 2024-2025 - Olivier Poncet
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -19,15 +19,17 @@
 # global environment
 # ----------------------------------------------------------------------------
 
-OPTLEVEL = -O2 -g
+TOPDIR   = $(CURDIR)
+OPTLEVEL = -O2
 WARNINGS = -Wall
-EXTRAS   = -pthread -fstack-protector-strong
-CC       = gcc
+EXTRAS   = -sUSE_SDL=2 -sUSE_SDL_IMAGE=2 -sUSE_ZLIB=1
+CC       = emcc
 CFLAGS   = -std=c99 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
-CXX      = g++
+CXX      = em++
 CXXFLAGS = -std=c++14 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
-CPPFLAGS = -I. -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -DAUTO_DETECT_PLATFORM -DBYPASS_PROTECTION
-LD       = g++
+CPP      = emcpp
+CPPFLAGS = -I. -I$(TOPDIR)/src -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -DHAVE_CONFIG_H
+LD       = em++
 LDFLAGS  = -L.
 CP       = cp
 CPFLAGS  = -f
@@ -39,10 +41,10 @@ RMFLAGS  = -f
 # ----------------------------------------------------------------------------
 
 .c.o:
-	$(CC) -c $(CFLAGS) $(CPPFLAGS) $<
+	$(CC) -c $(CFLAGS) $(CPPFLAGS) -o $@ $<
 
 .cc.o:
-	$(CXX) -c $(CXXFLAGS) $(CPPFLAGS) $<
+	$(CXX) -c $(CXXFLAGS) $(CPPFLAGS) -o $@ $<
 
 # ----------------------------------------------------------------------------
 # global targets
@@ -57,63 +59,84 @@ clean: clean_another_world
 	@echo "=== $@ ok ==="
 
 # ----------------------------------------------------------------------------
-# another world files
+# Another World
 # ----------------------------------------------------------------------------
 
-another_world_PROGRAM = another-world.bin
+another_world_PROGRAM = bin/another-world.html
 
 another_world_SOURCES = \
-	bank.cc \
-	engine.cc \
-	file.cc \
-	mixer.cc \
-	parts.cc \
-	resource.cc \
-	serializer.cc \
-	sfxplayer.cc \
-	staticres.cc \
-	sysImplementation.cc \
-	util.cc \
-	video.cc \
-	vm.cc \
-	main.cc \
+	src/main.cc \
+	src/logger.cc \
+	src/bytekiller.cc \
+	src/file.cc \
+	src/intern.cc \
+	src/data.cc \
+	src/engine.cc \
+	src/backend.cc \
+	src/resources.cc \
+	src/video.cc \
+	src/audio.cc \
+	src/mixer.cc \
+	src/sound.cc \
+	src/music.cc \
+	src/input.cc \
+	src/vm.cc \
 	$(NULL)
 
 another_world_HEADERS = \
-	bank.h \
-	endian.h \
-	engine.h \
-	file.h \
-	intern.h \
-	mixer.h \
-	parts.h \
-	resource.h \
-	serializer.h \
-	sfxplayer.h \
-	sys.h \
-	util.h \
-	video.h \
-	vm.h \
+	src/main.h \
+	src/logger.h \
+	src/bytekiller.h \
+	src/file.h \
+	src/intern.h \
+	src/data.h \
+	src/engine.h \
+	src/backend.h \
+	src/resources.h \
+	src/video.h \
+	src/audio.h \
+	src/mixer.h \
+	src/sound.h \
+	src/music.h \
+	src/input.h \
+	src/vm.h \
 	$(NULL)
 
 another_world_OBJECTS = \
-	bank.o \
-	engine.o \
-	file.o \
-	mixer.o \
-	parts.o \
-	resource.o \
-	serializer.o \
-	sfxplayer.o \
-	staticres.o \
-	sysImplementation.o \
-	util.o \
-	video.o \
-	vm.o \
-	main.o \
+	src/main.o \
+	src/logger.o \
+	src/bytekiller.o \
+	src/file.o \
+	src/intern.o \
+	src/data.o \
+	src/engine.o \
+	src/backend.o \
+	src/resources.o \
+	src/video.o \
+	src/audio.o \
+	src/mixer.o \
+	src/sound.o \
+	src/music.o \
+	src/input.o \
+	src/vm.o \
 	$(NULL)
 
 another_world_LDFLAGS = \
+	--use-preload-plugins \
+	--preload-file share/another-world/BANK01 \
+	--preload-file share/another-world/BANK02 \
+	--preload-file share/another-world/BANK03 \
+	--preload-file share/another-world/BANK04 \
+	--preload-file share/another-world/BANK05 \
+	--preload-file share/another-world/BANK06 \
+	--preload-file share/another-world/BANK07 \
+	--preload-file share/another-world/BANK08 \
+	--preload-file share/another-world/BANK09 \
+	--preload-file share/another-world/BANK0A \
+	--preload-file share/another-world/BANK0B \
+	--preload-file share/another-world/BANK0C \
+	--preload-file share/another-world/BANK0D \
+	--preload-file share/another-world/MEMLIST.BIN \
 	$(NULL)
 
 another_world_LDADD = \
@@ -122,15 +145,15 @@ another_world_LDADD = \
 	$(NULL)
 
 another_world_CLEANFILES = \
-	another-world.bin \
-	another-world.data \
-	another-world.html \
-	another-world.wasm \
-	another-world.js \
+	bin/another-world.bin \
+	bin/another-world.data \
+	bin/another-world.html \
+	bin/another-world.wasm \
+	bin/another-world.js \
 	$(NULL)
 
 # ----------------------------------------------------------------------------
-# build another-world
+# build Another World
 # ----------------------------------------------------------------------------
 
 build_another_world: $(another_world_PROGRAM)
@@ -139,11 +162,11 @@ $(another_world_PROGRAM): $(another_world_OBJECTS)
 	$(LD) $(LDFLAGS) $(another_world_LDFLAGS) -o $(another_world_PROGRAM) $(another_world_OBJECTS) $(another_world_LDADD)
 
 # ----------------------------------------------------------------------------
-# clean another-world
+# clean Another World
 # ----------------------------------------------------------------------------
 
 clean_another_world:
-	$(RM) $(RMFLAGS) $(another_world_OBJECTS) $(another_world_CLEANFILES)
+	$(RM) $(RMFLAGS) $(another_world_OBJECTS) $(another_world_PROGRAM) $(another_world_CLEANFILES)
 
 # ----------------------------------------------------------------------------
 # End-Of-File

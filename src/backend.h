@@ -1,5 +1,5 @@
 /*
- * mixer.h - Copyright (c) 2004-2025
+ * backend.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,65 +16,57 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_MIXER_H__
-#define __AW_MIXER_H__
+#ifndef __AW_BACKEND_H__
+#define __AW_BACKEND_H__
 
 #include "intern.h"
 
 // ---------------------------------------------------------------------------
-// Mixer
+// Backend
 // ---------------------------------------------------------------------------
 
-class Mixer final
+class Backend
     : public SubSystem
 {
 public: // public interface
-    Mixer(Engine& engine, Audio& audio);
+    Backend(Engine& engine);
 
-    Mixer(Mixer&&) = delete;
+    Backend(Backend&&) = delete;
 
-    Mixer(const Mixer&) = delete;
+    Backend(const Backend&) = delete;
 
-    Mixer& operator=(Mixer&&) = delete;
+    Backend& operator=(Backend&&) = delete;
 
-    Mixer& operator=(const Mixer&) = delete;
+    Backend& operator=(const Backend&) = delete;
 
-    virtual ~Mixer() = default;
+    virtual ~Backend() = default;
 
-    virtual auto start() -> void override final;
+public: // public backend interface
+    static auto create(Engine& engine) -> Backend*;
 
-    virtual auto reset() -> void override final;
+    virtual auto getTicks() -> uint32_t = 0;
 
-    virtual auto stop() -> void override final;
+    virtual auto sleepFor(uint32_t delay) -> void = 0;
 
-public: // public mixer interface
-    auto playAllChannels() -> void;
+    virtual auto sleepUntil(uint32_t ticks) -> void = 0;
 
-    auto stopAllChannels() -> void;
+    virtual auto processEvents(Controls& controls) -> void = 0;
 
-    auto playChannel(uint8_t channel, const AudioSample& sample) -> void;
+    virtual auto updateScreen(const Page& page, const Palette& palette) -> void = 0;
 
-    auto stopChannel(uint8_t channel) -> void;
+    virtual auto startAudio(AudioCallback callback, void* userdata) -> void = 0;
 
-    auto setChannelVolume(uint8_t channel, uint8_t volume) -> void;
+    virtual auto stopAudio() -> void = 0;
 
-private: // private interface
-    auto startAudio() -> void;
+    virtual auto getAudioSampleRate() -> uint32_t = 0;
 
-    auto resetAudio() -> void;
+    virtual auto addTimer(uint32_t delay, TimerCallback callback, void* data) -> int = 0;
 
-    auto stopAudio() -> void;
-
-    auto processAudio(float* buffer, int length) -> void;
-
-private: // private data
-    Audio&       _audio;
-    AudioChannel _channels[4];
-    uint32_t     _samplerate;
+    virtual auto removeTimer(int timerId) -> void = 0;
 };
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_MIXER_H__ */
+#endif /* __AW_BACKEND_H__ */

@@ -1,283 +1,283 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * main.cc - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include <memory>
-#include "engine.h"
-#include "sys.h"
-#include "util.h"
-
-
-static const char *USAGE = 
-	"Raw - Another World Interpreter\n"
-	"Usage: raw [OPTIONS]...\n"
-	"  --datapath=PATH   Path to where the game is installed (default './assets')\n"
-	"  --savepath=PATH   Path to where the save files are stored (default './assets')\n";
-
-static bool parseOption(const char *arg, const char *longCmd, const char **opt) {
-	bool ret = false;
-	if (arg[0] == '-' && arg[1] == '-') {
-		if (strncmp(arg + 2, longCmd, strlen(longCmd)) == 0) {
-			*opt = arg + 2 + strlen(longCmd);
-			ret = true;
-		}
-	}
-	return ret;
-}
-
-static int run(System *system, const char *dataPath, const char *savePath) {
-	const std::unique_ptr<Engine> engine(new Engine(system, dataPath, savePath));
-	if(engine) {
-		engine->run();
-	}
-	return EXIT_SUCCESS;
-}
-
-/*
-	We use here a design pattern found in Doom3:
-	An Abstract Class pointer pointing to the implementation on the Heap.
-*/
-//extern System *System_SDL_create();
-extern System *stub ;//= System_SDL_create();
-
-#ifdef main
-#undef main
+#ifdef HAVE_CONFIG_H
+#include "config.h"
 #endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdint>
+#include <climits>
+#include <cassert>
+#include <ctime>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
+#include "logger.h"
+#include "engine.h"
+#include "main.h"
 
-int main(int argc, char *argv[]) {
-	const char *dataPath = "./assets";
-	const char *savePath = "./assets";
-	for (int i = 1; i < argc; ++i) {
-		bool opt = false;
-		if (strlen(argv[i]) >= 2) {
-			opt |= parseOption(argv[i], "datapath=", &dataPath);
-			opt |= parseOption(argv[i], "savepath=", &savePath);
+// ---------------------------------------------------------------------------
+// <anonymous>::globals
+// ---------------------------------------------------------------------------
 
-		}
-		if (!opt) {
-			printf("%s",USAGE);
-			return 0;
-		}
-	}
-	//FCS
-	//g_debugMask = DBG_INFO; // DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND
-	//g_debugMask = 0 ;//DBG_INFO |  DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND ;
+namespace {
 
-	return run(stub, dataPath, savePath);
+std::string g_aw_program = "another-world";
+std::string g_aw_datadir = "share/another-world";
+std::string g_aw_dumpdir = "";
+bool        g_aw_usage   = false;
+
 }
 
-
-
-/*
-   Game was originally made with 16. SIXTEEN colors. Running on 320x200 (64,000 pixels.)
-
-   Great fan site here: https://sites.google.com/site/interlinkknight/anotherworld
-   Contains the wheelcode :P ! 
-
-   A lot of details can be found regarding the game and engine architecture at:
-   http://www.anotherworld.fr/anotherworld_uk/another_world.htm
-
-   The chronology of the game implementation can retraced via the ordering of the opcodes:
-   The sound and music opcode are at the end: Music and sound was done at the end.
-
-   Call tree:
-   =========
-
-   SDLSystem       systemImplementaion ;
-   System *sys = & systemImplementaion ;
-
-   main
-   {
-       
-       Engine *e = new Engine();
-	   e->run()
-	   {
-	      sys->init("Out Of This World");
-		  setup();
-	      vm.restartAt(0x3E80); // demo starts at 0x3E81
-
-	     while (!_stub->_pi.quit) 
-		 {
-		   vm.setupScripts();
-		   vm.inp_updatePlayer();
-		    processInput();
-		   vm.runScripts();
-	     }
-
-	     finish();
-	     
-	   }
-   }
-
-
-   Virtual Machine:
-   ================
-
-	   Seems the threading model is collaborative multi-tasking (as opposed to preemptive multitasking):
-	   A thread (called a Channel on Eric Chahi website) will release the hand to the next one via the
-	   break opcode.
-
-	   It seems that even when a setvec is requested by a thread, we cannot set the instruction pointer
-	   yet. The thread is allowed to keep on executing its code for the remaining of the vm frame.
-
-       A virtual machine frame has a variable duration. The unit of time is 20ms and the frame can be set
-	   to live for 1 (20ms ; 50Hz) up to 5 (100ms ; 10Hz).
-
-
-	   30 something opcode. The graphic opcode are more complex, not only the declare the operation to perform
-	   they also define where to find the vertices (segVideo1 or segVideo2).
-
-	   No stack available but a thread can save its pc (Program Counter) once: One method call and return is possible.
-
-
-   Video :
-   =======
-	   Double buffer architecture. AW optcodes even has a special instruction for blitting from one
-	   frame buffer to an other.
-
-	   Double buffering is implemented in software
-
-	   According to Eric Chahi's webpage there are 4 framebuffer. Since on full screenbuffer is 320x200/2 = 32kB
-	   that would mean the total size consumed is 128KB ?
-
-   Sound :
-   =======
-	   Mixing is done on software.
-
-	   Since the virtal machine and SDL are running simultaneously in two different threads:
-	   Any read or write to an elements of the sound channels MUST be synchronized with a 
-	   mutex.
-
-   Endianess:
-   ==========
-
-   Atari and Amiga used bigEndian CPUs. Data are hence stored within BANK in big endian format.
-   On an Intel or ARM CPU data will have to be transformed when read.
-
-
-
-   The original codebase contained a looooot of cryptic hexa values.
-   0x100 (for 256 variables)
-   0x400 (for one kilobyte)
-   0x40 (for num threads)
-   0x3F (num thread mask)
-   I cleaned that up.
-
-   Virtual Machine was named "logic" ?!?!
-
-   Questions & Answers :
-   =====================
-
-   Q: How does the interpreter deals with the CPU speed ?! A pentium is a tad faster than a Motorola 68000
-      after all.
-   A: See vm frame time: The vm frame duration is variable. The vm actually write for how long a video frame
-      should be displayed in variable 0xFF. The value is the number of 20ms slice
-
-   Q: Why is a palette 2048 bytes if there are only 16 colors ? I would have expected 48 bytes...
-   A: ???
-
-   Q: Why does Resource::load() search for ressource to load from higher to lower....since it will load stuff
-      until no more ressources are marked as "Need to be loaded".
-   A: ???
-
-   Original DOS version :
-   ======================
-
-   Banks: 1,236,519 B
-   exe  :    20,293 B
-
-
-   Total bank      size: 1236519 (100%)
-   ---------------------------------
-   Total RT_SOUND    size: 585052  ( 47%)
-   Total RT_MUSIC    size:   3540  (  0%)
-   Total RT_POLY_ANIM   size: 106676  (  9%)
-   Total RT_PALETTE      size:  11032  (  1%)
-   Total RT_BYTECODE size: 135948  ( 11%)
-   Total RT_POLY_CINEMATIC     size: 291008  ( 24%)
-
-   As usual sounds are the most consuming assets (Quake1,Quake2 etc.....)
-
-
-   memlist.bin features 146 entries :
-   ==================================
-
-   Most important part in an entry are:
-
-   bankId          : - Give the file were the resource is.
-   offset          : - How much to skip in the file before hiting the resource.
-   size,packetSize : - How much to read, should we unpack what we read.
-
-
-
-   Polygons drawing :
-   =================
-
-   Polygons can be given as:
-    - a pure screenspace sequence of points: I call those screenspace polygons.
-	- a list of delta to add or substract to the first vertex. I call those: objectspace polygons.
-
-   Video : 
-   =======
-
-   Q: Why 4 framebuffer ?
-   A: It seems the background is generated once (like in the introduction) and stored in a framebuffer.
-      Everyframe the saved background is copied and new elements are drawn on top.
-
-
-   Trivia :
-   ========
-
-   If you are used to RGBA 32bits per pixel framebuffer you are in for a shock:
-   Another world is 16 colors palette based, making it 4bits per pixel !!
-
-   Video generation :
-   ==================
-
-   Thank god the engine sets the palette before starting to drawing instead of after bliting.
-   I would have been unable to generate screenshots otherwise.
-
-   Memor managment :
-   =================
-
-   There is 0 malloc during the game. All resources are loaded in one big buffer (Resource::load).
-   The entire buffer is "freed" at the end of a game part.
-
-
-   The renderer is actually capable of Blending a new poly in the framebuffer (Video::drawLineT)
-
-
-   	// I am almost sure that:
-	// _curPagePtr1 is the backbuffer 
-	// _curPagePtr2 is the frontbuffer
-	// _curPagePtr3 is the background builder.
-
-
-   RETARTED :
-   ==========
-
-   * Why does memlist.bin uses a special state field 0xFF in order to mark the end of resources ??!
-     It would have been so much easier to write the number of resources at the beginning of the code.
-
-   TODO :
-   ======
-
-	   - Add OpenGL support.
-	   - Add screenshot capability.
-	   - Try to run with "Another World" asset instead of "Out Of This World" assets.
-	   - Find where bitmap background are used...
-*/
+// ---------------------------------------------------------------------------
+// <anonymous>::CommandLine
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct CommandLine
+{
+    static auto program(const std::string& arg) -> bool
+    {
+        const char* str = arg.c_str();
+        const char* sep = ::strrchr(str, '/');
+        if(sep != nullptr) {
+            g_aw_program = (sep + 1);
+        }
+        else {
+            g_aw_program = arg;
+        }
+        return true;
+    }
+
+    static auto option(const std::string& arg) -> bool
+    {
+        const char* str = arg.c_str();
+        const char* equ = ::strchr(str, '=');
+        if(equ == nullptr) {
+            if((arg == "-h") || (arg == "--help")) {
+                g_aw_usage = true;
+                return true;
+            }
+            if(arg == "--quiet") {
+                g_logger_mask &= ~LOG_DEBUG;
+                g_logger_mask &= ~LOG_PRINT;
+                g_logger_mask &= ~LOG_ALERT;
+                g_logger_mask &= ~LOG_ERROR;
+                g_logger_mask &= ~LOG_FATAL;
+                return true;
+            }
+            if(arg == "--debug") {
+                g_logger_mask |= LOG_DEBUG;
+                return true;
+            }
+            if(arg == "--debug-all") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_ENGINE;
+                g_logger_mask |= SYS_BACKEND;
+                g_logger_mask |= SYS_RESOURCES;
+                g_logger_mask |= SYS_VIDEO;
+                g_logger_mask |= SYS_AUDIO;
+                g_logger_mask |= SYS_MIXER;
+                g_logger_mask |= SYS_SOUND;
+                g_logger_mask |= SYS_MUSIC;
+                g_logger_mask |= SYS_INPUT;
+                g_logger_mask |= SYS_VM;
+                return true;
+            }
+            if(arg == "--debug-engine") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_ENGINE;
+                return true;
+            }
+            if(arg == "--debug-backend") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_BACKEND;
+                return true;
+            }
+            if(arg == "--debug-resources") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_RESOURCES;
+                return true;
+            }
+            if(arg == "--debug-video") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_VIDEO;
+                return true;
+            }
+            if(arg == "--debug-audio") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_AUDIO;
+                return true;
+            }
+            if(arg == "--debug-mixer") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_MIXER;
+                return true;
+            }
+            if(arg == "--debug-sound") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_SOUND;
+                return true;
+            }
+            if(arg == "--debug-music") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_MUSIC;
+                return true;
+            }
+            if(arg == "--debug-input") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_INPUT;
+                return true;
+            }
+            if(arg == "--debug-vm") {
+                g_logger_mask |= LOG_DEBUG;
+                g_logger_mask |= SYS_VM;
+                return true;
+            }
+        }
+        else {
+            const size_t len = (equ - str);
+            if(arg.compare(0, len, "--datadir") == 0) {
+                g_aw_datadir = (equ + 1);
+                return true;
+            }
+            if(arg.compare(0, len, "--dumpdir") == 0) {
+                g_aw_dumpdir = (equ + 1);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static auto usage() -> void
+    {
+        std::cout << "Usage: " << g_aw_program << " [OPTIONS...]"                    << std::endl;
+        std::cout << ""                                                              << std::endl;
+        std::cout << "Options:"                                                      << std::endl;
+        std::cout << ""                                                              << std::endl;
+        std::cout << "  -h, --help            display this help and exit"            << std::endl;
+        std::cout << ""                                                              << std::endl;
+        std::cout << "  --datadir=PATH        directory where data files are stored" << std::endl;
+        std::cout << "  --dumpdir=PATH        directory where dump files are stored" << std::endl;
+        std::cout << ""                                                              << std::endl;
+        std::cout << "  --quiet               quiet mode"                            << std::endl;
+        std::cout << "  --debug               debug mode"                            << std::endl;
+        std::cout << "  --debug-all           debug all subsystems"                  << std::endl;
+        std::cout << "  --debug-engine        debug the engine subsystem"            << std::endl;
+        std::cout << "  --debug-backend       debug the backend subsystem"           << std::endl;
+        std::cout << "  --debug-resources     debug the resources subsystem"         << std::endl;
+        std::cout << "  --debug-video         debug the video subsystem"             << std::endl;
+        std::cout << "  --debug-audio         debug the audio subsystem"             << std::endl;
+        std::cout << "  --debug-mixer         debug the mixer subsystem"             << std::endl;
+        std::cout << "  --debug-sound         debug the sound subsystem"             << std::endl;
+        std::cout << "  --debug-music         debug the music subsystem"             << std::endl;
+        std::cout << "  --debug-input         debug the input subsystem"             << std::endl;
+        std::cout << "  --debug-vm            debug the vm subsystem"                << std::endl;
+        std::cout << ""                                                              << std::endl;
+    }
+};
+
+}
+
+// ---------------------------------------------------------------------------
+// <anonymous>::Program
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct Program
+{
+    static auto main() -> int
+    {
+        EnginePtr engine;
+
+        try {
+            engine = std::make_unique<Engine>(g_aw_datadir, g_aw_dumpdir);
+            engine->main();
+        }
+        catch(const Panic& panic) {
+            panic();
+            return EXIT_FAILURE;
+        }
+        catch(...) {
+            std::cerr << "unhandled exception" << std::endl;
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS;
+    }
+};
+
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
+int main(int argc, char* argv[])
+{
+#ifdef __EMSCRIPTEN__
+    g_logger_mask &= ~LOG_DEBUG;
+    g_logger_mask &= ~LOG_PRINT;
+    g_logger_mask &= ~LOG_ALERT;
+    g_logger_mask &= ~LOG_ERROR;
+    g_logger_mask &= ~LOG_FATAL;
+#else
+    g_logger_mask &= ~LOG_DEBUG;
+#endif
+    for(int argi = 0; argi < argc; ++argi) {
+        const std::string arg(argv[argi]);
+        if(argi == 0) {
+            if(CommandLine::program(arg) == false) {
+                std::cerr << "Error: invalid argument " << '<' << arg << '>' << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+        else {
+            if(CommandLine::option(arg) == false) {
+                std::cerr << "Error: invalid argument " << '<' << arg << '>' << std::endl;
+                return EXIT_FAILURE;
+            }
+        }
+        if(g_aw_usage != false) {
+            CommandLine::usage();
+            return EXIT_SUCCESS;
+        }
+#ifdef NDEBUG
+        if(g_logger_mask & LOG_DEBUG) {
+            log_alert("debug mode was requested but the program was built in release mode");
+            log_alert("no debugging information will be generated");
+        }
+#endif
+    }
+    return Program::main();
+}
+
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------

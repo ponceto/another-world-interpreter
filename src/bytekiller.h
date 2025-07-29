@@ -1,5 +1,5 @@
 /*
- * mixer.h - Copyright (c) 2004-2025
+ * bytekiller.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,65 +16,54 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_MIXER_H__
-#define __AW_MIXER_H__
-
-#include "intern.h"
+#ifndef __AW_BYTEKILLER_H__
+#define __AW_BYTEKILLER_H__
 
 // ---------------------------------------------------------------------------
-// Mixer
+// ByteKiller
 // ---------------------------------------------------------------------------
 
-class Mixer final
-    : public SubSystem
+class ByteKiller
 {
 public: // public interface
-    Mixer(Engine& engine, Audio& audio);
+    ByteKiller(uint8_t* buffer, uint32_t packedSize, uint32_t unpackedSize);
 
-    Mixer(Mixer&&) = delete;
+    ByteKiller(ByteKiller&&) = delete;
 
-    Mixer(const Mixer&) = delete;
+    ByteKiller(const ByteKiller&) = delete;
 
-    Mixer& operator=(Mixer&&) = delete;
+    ByteKiller& operator=(ByteKiller&&) = delete;
 
-    Mixer& operator=(const Mixer&) = delete;
+    ByteKiller& operator=(const ByteKiller&) = delete;
 
-    virtual ~Mixer() = default;
+   ~ByteKiller() = default;
 
-    virtual auto start() -> void override final;
-
-    virtual auto reset() -> void override final;
-
-    virtual auto stop() -> void override final;
-
-public: // public mixer interface
-    auto playAllChannels() -> void;
-
-    auto stopAllChannels() -> void;
-
-    auto playChannel(uint8_t channel, const AudioSample& sample) -> void;
-
-    auto stopChannel(uint8_t channel) -> void;
-
-    auto setChannelVolume(uint8_t channel, uint8_t volume) -> void;
+    auto unpack() -> bool;
 
 private: // private interface
-    auto startAudio() -> void;
+    auto fetchLong() -> uint32_t;
 
-    auto resetAudio() -> void;
+    auto writeByte(uint8_t byte) -> void;
 
-    auto stopAudio() -> void;
+    auto getBit() -> uint32_t;
 
-    auto processAudio(float* buffer, int length) -> void;
+    auto getBits(uint32_t bits) -> uint32_t;
+
+    auto unpackBytes(uint32_t count) -> void;
+
+    auto unpackBytes(uint32_t offset, uint32_t count) -> void;
 
 private: // private data
-    Audio&       _audio;
-    AudioChannel _channels[4];
-    uint32_t     _samplerate;
+    uint8_t* _buffer;
+    uint8_t* _srcptr;
+    uint8_t* _dstptr;
+    int32_t  _length;
+    uint32_t _check;
+    uint32_t _chunk;
 };
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_MIXER_H__ */
+#endif /* __AW_BYTEKILLER_H__ */

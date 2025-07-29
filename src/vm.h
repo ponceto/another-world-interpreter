@@ -1,139 +1,181 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * vm.h - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#ifndef __LOGIC_H__
-#define __LOGIC_H__
+#ifndef __AW_VIRTUALMACHINE_H__
+#define __AW_VIRTUALMACHINE_H__
 
 #include "intern.h"
 
-#define VM_NUM_THREADS 64
-#define VM_NUM_VARIABLES 256
-#define VM_NO_SETVEC_REQUESTED 0xFFFF
-#define VM_INACTIVE_THREAD    0xFFFF
+// ---------------------------------------------------------------------------
+// Variables
+// ---------------------------------------------------------------------------
 
-
-enum ScriptVars {
-		VM_VARIABLE_RANDOM_SEED          = 0x3C,
-		
-		VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
-
-		VM_VARIABLE_HERO_POS_UP_DOWN     = 0xE5,
-
-		VM_VARIABLE_MUS_MARK             = 0xF4,
-
-		VM_VARIABLE_SCROLL_Y             = 0xF9, // = 239
-		VM_VARIABLE_HERO_ACTION          = 0xFA,
-		VM_VARIABLE_HERO_POS_JUMP_DOWN   = 0xFB,
-		VM_VARIABLE_HERO_POS_LEFT_RIGHT  = 0xFC,
-		VM_VARIABLE_HERO_POS_MASK        = 0xFD,
-		VM_VARIABLE_HERO_ACTION_POS_MASK = 0xFE,
-		VM_VARIABLE_PAUSE_SLICES         = 0xFF
-	};
-
-struct Mixer;
-struct Resource;
-struct Serializer;
-struct SfxPlayer;
-struct System;
-struct Video;
-
-//For threadsData navigation
-#define PC_OFFSET 0
-#define REQUESTED_PC_OFFSET 1
-#define NUM_DATA_FIELDS 2
-
-//For vmIsChannelActive navigation
-#define CURR_STATE 0
-#define REQUESTED_STATE 1
-#define NUM_THREAD_FIELDS 2
-
-struct VirtualMachine {
-
-	// The type of entries in opcodeTable. This allows "fast" branching
-	typedef void (VirtualMachine::*OpcodeStub)();
-	static const OpcodeStub opcodeTable[];
-
-	//This table is used to play a sound
-	static const uint16_t frequenceTable[];
-
-	Mixer *mixer;
-	Resource *res;
-	SfxPlayer *player;
-	Video *video;
-	System *sys;
-
-	int16_t vmVariables[VM_NUM_VARIABLES];
-	uint16_t _scriptStackCalls[VM_NUM_THREADS];
-	uint16_t threadsData[NUM_DATA_FIELDS][VM_NUM_THREADS];
-
-	// This array is used: 
-	//     0 to save the channel's instruction pointer 
-	//     when the channel release control (this happens on a break).
-	//     1 When a setVec is requested for the next vm frame.
-	uint8_t vmIsChannelActive[NUM_THREAD_FIELDS][VM_NUM_THREADS];
-
-	Ptr _scriptPtr;
-	uint8_t _stackPtr;
-	bool gotoNextThread;
-
-	VirtualMachine(Mixer *mix, Resource *res, SfxPlayer *ply, Video *vid, System *stub);
-	void init();
-	
-	void op_movConst();
-	void op_mov();
-	void op_add();
-	void op_addConst();
-	void op_call();
-	void op_ret();
-	void op_pauseThread();
-	void op_jmp();
-	void op_setSetVect();
-	void op_jnz();
-	void op_condJmp();
-	void op_setPalette();
-	void op_resetThread();
-	void op_selectVideoPage();
-	void op_fillVideoPage();
-	void op_copyVideoPage();
-	void op_blitFramebuffer();
-	void op_killThread();	
-	void op_drawString();
-	void op_sub();
-	void op_and();
-	void op_or();
-	void op_shl();
-	void op_shr();
-	void op_playSound();
-	void op_updateMemList();
-	void op_playMusic();
-
-	void initForPart(uint16_t partId);
-	void checkThreadRequests();
-	void hostFrame();
-	void executeThread();
-
-	void inp_updatePlayer();
-	void inp_handleSpecialKeys();
-	
-	void snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel);
-	void snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos);
-	
-	void saveOrLoad(Serializer &ser);
+enum Variables
+{
+    VM_VARIABLE_RANDOM_SEED          = 0x3c,
+    VM_VARIABLE_INPUT_KEY            = 0xda,
+    VM_VARIABLE_HERO_POS_UP_DOWN     = 0xe5,
+    VM_VARIABLE_MUSIC_MARK           = 0xf4,
+    VM_VARIABLE_SCROLL_Y             = 0xf9,
+    VM_VARIABLE_HERO_ACTION          = 0xfa,
+    VM_VARIABLE_HERO_POS_JUMP_DOWN   = 0xfb,
+    VM_VARIABLE_HERO_POS_LEFT_RIGHT  = 0xfc,
+    VM_VARIABLE_HERO_POS_MASK        = 0xfd,
+    VM_VARIABLE_HERO_ACTION_POS_MASK = 0xfe,
+    VM_VARIABLE_PAUSE_SLICES         = 0xff
 };
 
-#endif
+// ---------------------------------------------------------------------------
+// VirtualMachine
+// ---------------------------------------------------------------------------
+
+class VirtualMachine final
+    : public SubSystem
+{
+public: // public interface
+    VirtualMachine(Engine& engine);
+
+    VirtualMachine(VirtualMachine&&) = delete;
+
+    VirtualMachine(const VirtualMachine&) = delete;
+
+    VirtualMachine& operator=(VirtualMachine&&) = delete;
+
+    VirtualMachine& operator=(const VirtualMachine&) = delete;
+
+    virtual ~VirtualMachine() = default;
+
+    virtual auto start() -> void override final;
+
+    virtual auto reset() -> void override final;
+
+    virtual auto stop() -> void override final;
+
+public: // public vm interface
+    auto run(Controls& controls) -> void;
+
+    auto setByteCode(const uint8_t* bytecode) -> void;
+
+    auto getRegister(uint8_t index) const -> uint16_t
+    {
+        return _registers[index].u;
+    }
+
+    auto setRegister(uint8_t index, uint16_t value)
+    {
+        _registers[index].u = value;
+    }
+
+private: // private interface
+    struct Thread
+    {
+        uint32_t thread_id       = 0;
+        uint16_t current_pc      = 0;
+        uint16_t requested_pc    = 0;
+        uint8_t  current_state   = 0;
+        uint8_t  requested_state = 0;
+        uint8_t  opcode          = 0x3f;
+        bool     yield           = false;
+    };
+
+    struct Register
+    {
+        union {
+            int16_t  s;
+            uint16_t u;
+        };
+    };
+
+    struct Stack
+    {
+        uint32_t array[256];
+        uint32_t index;
+    };
+
+    auto op_movr(Thread& thread) -> void;
+
+    auto op_movi(Thread& thread) -> void;
+
+    auto op_addr(Thread& thread) -> void;
+
+    auto op_addi(Thread& thread) -> void;
+
+    auto op_subr(Thread& thread) -> void;
+
+    auto op_andi(Thread& thread) -> void;
+
+    auto op_iori(Thread& thread) -> void;
+
+    auto op_shli(Thread& thread) -> void;
+
+    auto op_shri(Thread& thread) -> void;
+
+    auto op_jump(Thread& thread) -> void;
+
+    auto op_cjmp(Thread& thread) -> void;
+
+    auto op_djnz(Thread& thread) -> void;
+
+    auto op_call(Thread& thread) -> void;
+
+    auto op_ret(Thread& thread) -> void;
+
+    auto op_init(Thread& thread) -> void;
+
+    auto op_kill(Thread& thread) -> void;
+
+    auto op_yield(Thread& thread) -> void;
+
+    auto op_reset(Thread& thread) -> void;
+
+    auto op_loadres(Thread& thread) -> void;
+
+    auto op_palette(Thread& thread) -> void;
+
+    auto op_page(Thread& thread) -> void;
+
+    auto op_fill(Thread& thread) -> void;
+
+    auto op_copy(Thread& thread) -> void;
+
+    auto op_blit(Thread& thread) -> void;
+
+    auto op_print(Thread& thread) -> void;
+
+    auto op_sound(Thread& thread) -> void;
+
+    auto op_music(Thread& thread) -> void;
+
+    auto op_poly1(Thread& thread) -> void;
+
+    auto op_poly2(Thread& thread) -> void;
+
+    auto op_invalid(Thread& thread) -> void;
+
+private: // private data
+    ByteCode _bytecode;
+    Thread   _threads[64];
+    Register _registers[256];
+    Stack    _stack;
+};
+
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------
+
+#endif /* __AW_VIRTUALMACHINE_H__ */

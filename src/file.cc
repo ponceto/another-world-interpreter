@@ -1,185 +1,459 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * file.cc - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include "zlib.h"
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdint>
+#include <climits>
+#include <cassert>
+#include <ctime>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
+#include <zlib.h>
+#include "logger.h"
 #include "file.h"
 
+// ---------------------------------------------------------------------------
+// FileNullImpl
+// ---------------------------------------------------------------------------
 
-struct File_impl {
-	bool _ioErr;
-	File_impl() : _ioErr(false) {}
-  virtual ~File_impl() {}
-	virtual bool open(const char *path, const char *mode) = 0;
-	virtual void close() = 0;
-	virtual void seek(int32_t off) = 0;
-	virtual void read(void *ptr, uint32_t size) = 0;
-	virtual void write(void *ptr, uint32_t size) = 0;
+class FileNullImpl final
+    : public FileImpl
+{
+public: // public interface
+    FileNullImpl();
+
+    FileNullImpl(FileNullImpl&&) = delete;
+
+    FileNullImpl(const FileNullImpl&) = delete;
+
+    FileNullImpl& operator=(FileNullImpl&&) = delete;
+
+    FileNullImpl& operator=(const FileNullImpl&) = delete;
+
+    virtual ~FileNullImpl() = default;
+
+    virtual auto open(const std::string& path, const std::string& mode) -> bool override final;
+
+    virtual auto close()-> bool override final;
+
+    virtual auto seek(int32_t offset) -> bool override final;
+
+    virtual auto read(void* buffer, uint32_t length) -> bool override final;
+
+    virtual auto write(void* buffer, uint32_t length) -> bool override final;
 };
 
-struct stdFile : File_impl {
-	FILE *_fp;
-	stdFile() : _fp(0) {}
-	bool open(const char *path, const char *mode) {
-		_ioErr = false;
-		_fp = fopen(path, mode);
-		return (_fp != NULL);
-	}
-	void close() {
-		if (_fp) {
-			fclose(_fp);
-			_fp = 0;
-		}
-	}
-	void seek(int32_t off) {
-		if (_fp) {
-			fseek(_fp, off, SEEK_SET);
-		}
-	}
-	void read(void *ptr, uint32_t size) {
-		if (_fp) {
-			uint32_t r = fread(ptr, 1, size, _fp);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
-	void write(void *ptr, uint32_t size) {
-		if (_fp) {
-			uint32_t r = fwrite(ptr, 1, size, _fp);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
+// ---------------------------------------------------------------------------
+// FileStdioImpl
+// ---------------------------------------------------------------------------
+
+class FileStdioImpl final
+    : public FileImpl
+{
+public: // public interface
+    FileStdioImpl();
+
+    FileStdioImpl(FileStdioImpl&&) = delete;
+
+    FileStdioImpl(const FileStdioImpl&) = delete;
+
+    FileStdioImpl& operator=(FileStdioImpl&&) = delete;
+
+    FileStdioImpl& operator=(const FileStdioImpl&) = delete;
+
+    virtual ~FileStdioImpl();
+
+    virtual auto open(const std::string& path, const std::string& mode) -> bool override final;
+
+    virtual auto close()-> bool override final;
+
+    virtual auto seek(int32_t offset) -> bool override final;
+
+    virtual auto read(void* buffer, uint32_t length) -> bool override final;
+
+    virtual auto write(void* buffer, uint32_t length) -> bool override final;
+
+private: // private data
+    FILE* _file;
 };
 
-struct zlibFile : File_impl {
-	gzFile _fp;
-	zlibFile() : _fp(0) {}
-	bool open(const char *path, const char *mode) {
-		_ioErr = false;
-		_fp = gzopen(path, mode);
-		return (_fp != NULL);
-	}
-	void close() {
-		if (_fp) {
-			gzclose(_fp);
-			_fp = 0;
-		}
-	}
-	void seek(int32_t off) {
-		if (_fp) {
-			gzseek(_fp, off, SEEK_SET);
-		}
-	}
-	void read(void *ptr, uint32_t size) {
-		if (_fp) {
-			uint32_t r = gzread(_fp, ptr, size);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
-	void write(void *ptr, uint32_t size) {
-		if (_fp) {
-			uint32_t r = gzwrite(_fp, ptr, size);
-			if (r != size) {
-				_ioErr = true;
-			}
-		}
-	}
+// ---------------------------------------------------------------------------
+// FileZlibImpl
+// ---------------------------------------------------------------------------
+
+class FileZlibImpl final
+    : public FileImpl
+{
+public: // public interface
+    FileZlibImpl();
+
+    FileZlibImpl(FileZlibImpl&&) = delete;
+
+    FileZlibImpl(const FileZlibImpl&) = delete;
+
+    FileZlibImpl& operator=(FileZlibImpl&&) = delete;
+
+    FileZlibImpl& operator=(const FileZlibImpl&) = delete;
+
+    virtual ~FileZlibImpl();
+
+    virtual auto open(const std::string& path, const std::string& mode) -> bool override final;
+
+    virtual auto close()-> bool override final;
+
+    virtual auto seek(int32_t offset) -> bool override final;
+
+    virtual auto read(void* buffer, uint32_t length) -> bool override final;
+
+    virtual auto write(void* buffer, uint32_t length) -> bool override final;
+
+private: // private data
+    gzFile _file;
 };
 
-File::File(bool gzipped) {
-	if (gzipped) {
-		_impl = new zlibFile;
-	} else {
-		_impl = new stdFile;
-	}
+// ---------------------------------------------------------------------------
+// File
+// ---------------------------------------------------------------------------
+
+File::File(const std::string& impl)
+    : _impl(nullptr)
+{
+    if(!_impl && (impl == "stdio")) {
+        _impl = std::make_unique<FileStdioImpl>();
+    }
+    if(!_impl && (impl == "zlib")) {
+        _impl = std::make_unique<FileZlibImpl>();
+    }
+    if(!_impl) {
+        _impl = std::make_unique<FileNullImpl>();
+    }
 }
 
-File::~File() {
-	_impl->close();
-	delete _impl;
+auto File::open(const std::string& path, const std::string& mode) -> bool
+{
+    const bool status = _impl->open(path, mode);
+
+    if(status == false) {
+        log_error("error while opening file '%s'", path.c_str());
+    }
+    return status;
 }
 
-bool File::open(const char *filename, const char *directory, const char *mode) {	
-	_impl->close();
-	char buf[512];
-	sprintf(buf, "%s/%s", directory, filename);
-	char *p = buf + strlen(directory) + 1;
-	string_lower(p);
-	bool opened = _impl->open(buf, mode);
-	if (!opened) { // let's try uppercase
-		string_upper(p);
-		opened = _impl->open(buf, mode);
-	}
-	return opened;
+auto File::close() -> bool
+{
+    const bool status = _impl->close();
+
+    if(status == false) {
+        log_error("error while closing file");
+    }
+    return status;
 }
 
-void File::close() {
-	_impl->close();
+auto File::seek(int32_t offset) -> bool
+{
+    const bool status = _impl->seek(offset);
+
+    if(status == false) {
+        log_error("error while seeking %d bytes in file", offset);
+    }
+    return status;
 }
 
-bool File::ioErr() const {
-	return _impl->_ioErr;
+auto File::read(void* buffer, uint32_t length) -> bool
+{
+    const bool status = _impl->read(buffer, length);
+
+    if(status == false) {
+        log_error("error while reading %u bytes from file", length);
+    }
+    return status;
 }
 
-void File::seek(int32_t off) {
-	_impl->seek(off);
+auto File::write(void* buffer, uint32_t length) -> bool
+{
+    const bool status = _impl->write(buffer, length);
+
+    if(status == false) {
+        log_error("error while writing %u bytes into file", length);
+    }
+    return status;
 }
 
-void File::read(void *ptr, uint32_t size) {
-	_impl->read(ptr, size);
+auto File::ioOk() const -> bool
+{
+    return _impl->ioOk();
 }
 
-uint8_t File::readByte() {
-	uint8_t b;
-	read(&b, 1);
-	return b;
+auto File::ioErr() const -> bool
+{
+    return _impl->ioErr();
 }
 
-uint16_t File::readUint16BE() {
-	uint8_t hi = readByte();
-	uint8_t lo = readByte();
-	return (hi << 8) | lo;
+// ---------------------------------------------------------------------------
+// FileNullImpl
+// ---------------------------------------------------------------------------
+
+FileNullImpl::FileNullImpl()
+    : FileImpl()
+{
 }
 
-uint32_t File::readUint32BE() {
-	uint16_t hi = readUint16BE();
-	uint16_t lo = readUint16BE();
-	return (hi << 16) | lo;
+auto FileNullImpl::open(const std::string& path, const std::string& mode) -> bool
+{
+    _fail = true;
+
+    return false;
 }
 
-void File::write(void *ptr, uint32_t size) {
-	_impl->write(ptr, size);
+auto FileNullImpl::close() -> bool
+{
+    _fail = true;
+
+    return false;
 }
 
-void File::writeByte(uint8_t b) {
-	write(&b, 1);
+auto FileNullImpl::seek(int32_t offset) -> bool
+{
+    _fail = true;
+
+    return false;
 }
 
-void File::writeUint16BE(uint16_t n) {
-	writeByte(n >> 8);
-	writeByte(n & 0xFF);
+auto FileNullImpl::read(void* buffer, uint32_t length) -> bool
+{
+    _fail = true;
+
+    return false;
 }
 
-void File::writeUint32BE(uint32_t n) {
-	writeUint16BE(n >> 16);
-	writeUint16BE(n & 0xFFFF);
+auto FileNullImpl::write(void* buffer, uint32_t length) -> bool
+{
+    _fail = true;
+
+    return false;
 }
+
+// ---------------------------------------------------------------------------
+// FileStdioImpl
+// ---------------------------------------------------------------------------
+
+FileStdioImpl::FileStdioImpl()
+    : FileImpl()
+    , _file(nullptr)
+{
+}
+
+FileStdioImpl::~FileStdioImpl()
+{
+    static_cast<void>(close());
+}
+
+auto FileStdioImpl::open(const std::string& path, const std::string& mode) -> bool
+{
+    if(_file != nullptr) {
+        _file = (::fclose(_file), nullptr);
+        _fail = false;
+    }
+    if(_file == nullptr) {
+        _file = ::fopen(path.c_str(), mode.c_str());
+        if(_file == nullptr) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    return _fail == false;
+}
+
+auto FileStdioImpl::close() -> bool
+{
+    if(_file != nullptr) {
+        _file = (::fclose(_file), nullptr);
+        _fail = false;
+    }
+    else {
+        _fail = false;
+    }
+    return _fail == false;
+}
+
+auto FileStdioImpl::seek(int32_t offset) -> bool
+{
+    if(_file != nullptr) {
+        const int rc = ::fseek(_file, offset, SEEK_SET);
+        if(rc != 0) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+auto FileStdioImpl::read(void* buffer, uint32_t length) -> bool
+{
+    if(_file != nullptr) {
+        const auto rc = ::fread(buffer, 1, length, _file);
+        if(static_cast<uint32_t>(rc) != length) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+auto FileStdioImpl::write(void* buffer, uint32_t length) -> bool
+{
+    if(_file != nullptr) {
+        const auto rc = ::fwrite(buffer, 1, length, _file);
+        if(static_cast<uint32_t>(rc) != length) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+// ---------------------------------------------------------------------------
+// FileZlibImpl
+// ---------------------------------------------------------------------------
+
+FileZlibImpl::FileZlibImpl()
+    : FileImpl()
+    , _file(nullptr)
+{
+}
+
+FileZlibImpl::~FileZlibImpl()
+{
+    static_cast<void>(close());
+}
+
+auto FileZlibImpl::open(const std::string& path, const std::string& mode) -> bool
+{
+    if(_file != nullptr) {
+        _file = (::gzclose(_file), nullptr);
+        _fail = false;
+    }
+    if(_file == nullptr) {
+        _file = ::gzopen(path.c_str(), mode.c_str());
+        if(_file == nullptr) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    return _fail == false;
+}
+
+auto FileZlibImpl::close() -> bool
+{
+    if(_file != nullptr) {
+        _file = (::gzclose(_file), nullptr);
+        _fail = false;
+    }
+    else {
+        _fail = false;
+    }
+    return _fail == false;
+}
+
+auto FileZlibImpl::seek(int32_t offset) -> bool
+{
+    if(_file != nullptr) {
+        const int rc = ::gzseek(_file, offset, SEEK_SET);
+        if(rc != 0) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+auto FileZlibImpl::read(void* buffer, uint32_t length) -> bool
+{
+    if(_file != nullptr) {
+        const auto rc = ::gzread(_file, buffer, length);
+        if(static_cast<uint32_t>(rc) != length) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+auto FileZlibImpl::write(void* buffer, uint32_t length) -> bool
+{
+    if(_file != nullptr) {
+        const auto rc = ::gzwrite(_file, buffer, length);
+        if(static_cast<uint32_t>(rc) != length) {
+            _fail = true;
+        }
+        else {
+            _fail = false;
+        }
+    }
+    else {
+        _fail = true;
+    }
+    return _fail == false;
+}
+
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------

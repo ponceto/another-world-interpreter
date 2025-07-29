@@ -1,718 +1,901 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * vm.cc - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdint>
+#include <climits>
+#include <cassert>
 #include <ctime>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
+#include "logger.h"
+#include "engine.h"
 #include "vm.h"
-#include "mixer.h"
-#include "resource.h"
-#include "video.h"
-#include "serializer.h"
-#include "sfxplayer.h"
-#include "sys.h"
-#include "parts.h"
-#include "file.h"
 
-VirtualMachine::VirtualMachine(Mixer *mix, Resource *resParameter, SfxPlayer *ply, Video *vid, System *stub)
-	: mixer(mix), res(resParameter), player(ply), video(vid), sys(stub) {
-}
+// ---------------------------------------------------------------------------
+// some useful macros
+// ---------------------------------------------------------------------------
 
-void VirtualMachine::init() {
-
-	memset(vmVariables, 0, sizeof(vmVariables));
-	vmVariables[0x54] = 0x81;
-	vmVariables[VM_VARIABLE_RANDOM_SEED] = time(0);
-#ifdef BYPASS_PROTECTION
-   // these 3 variables are set by the game code
-   vmVariables[0xBC] = 0x10;
-   vmVariables[0xC6] = 0x80;
-   vmVariables[0xF2] = 4000;
-   // these 2 variables are set by the engine executable
-   vmVariables[0xDC] = 33;
+#ifndef NDEBUG
+#define LOG_DEBUG(format, ...) log_debug(SYS_VM, format, ##__VA_ARGS__)
+#else
+#define LOG_DEBUG(format, ...) do {} while(0)
 #endif
 
-	player->_markVar = &vmVariables[VM_VARIABLE_MUS_MARK];
+// ---------------------------------------------------------------------------
+// <anonymous>::condition
+// ---------------------------------------------------------------------------
+
+#ifndef NDEBUG
+namespace {
+
+const char* const condition[] = {
+    "eq", "ne",
+    "gt", "ge",
+    "lt", "le",
+    "??", "??",
+};
+
+}
+#endif
+
+// ---------------------------------------------------------------------------
+// VirtualMachine
+// ---------------------------------------------------------------------------
+
+VirtualMachine::VirtualMachine(Engine& engine)
+    : SubSystem(engine, "VirtualMachine")
+    , _bytecode()
+    , _threads()
+    , _registers()
+    , _stack()
+{
+    uint32_t index = 0;
+    for(auto& thread : _threads) {
+        thread.thread_id = index++;
+    }
 }
 
-void VirtualMachine::op_movConst() {
-	uint8_t variableId = _scriptPtr.fetchByte();
-	int16_t value = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_movConst(0x%02X, %d)", variableId, value);
-	vmVariables[variableId] = value;
+auto VirtualMachine::start() -> void
+{
+    LOG_DEBUG("starting...");
+    LOG_DEBUG("started!");
 }
 
-void VirtualMachine::op_mov() {
-	uint8_t dstVariableId = _scriptPtr.fetchByte();
-	uint8_t srcVariableId = _scriptPtr.fetchByte();	
-	debug(DBG_VM, "VirtualMachine::op_mov(0x%02X, 0x%02X)", dstVariableId, srcVariableId);
-	vmVariables[dstVariableId] = vmVariables[srcVariableId];
-}
-
-void VirtualMachine::op_add() {
-	uint8_t dstVariableId = _scriptPtr.fetchByte();
-	uint8_t srcVariableId = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_add(0x%02X, 0x%02X)", dstVariableId, srcVariableId);
-	vmVariables[dstVariableId] += vmVariables[srcVariableId];
-}
-
-void VirtualMachine::op_addConst() {
-	if (res->currentPartId == 0x3E86 && _scriptPtr.pc == res->segBytecode + 0x6D48) {
-		warning("VirtualMachine::op_addConst() hack for non-stop looping gun sound bug");
-		// the script 0x27 slot 0x17 doesn't stop the gun sound from looping, I 
-		// don't really know why ; for now, let's play the 'stopping sound' like 
-		// the other scripts do
-		//  (0x6D43) jmp(0x6CE5)
-		//  (0x6D46) break
-		//  (0x6D47) VAR(6) += -50
-		snd_playSound(0x5B, 1, 64, 1);
-	}
-	uint8_t variableId = _scriptPtr.fetchByte();
-	int16_t value = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_addConst(0x%02X, %d)", variableId, value);
-	vmVariables[variableId] += value;
-}
-
-void VirtualMachine::op_call() {
-
-	uint16_t offset = _scriptPtr.fetchWord();
-	uint8_t sp = _stackPtr;
-
-	debug(DBG_VM, "VirtualMachine::op_call(0x%X)", offset);
-	_scriptStackCalls[sp] = _scriptPtr.pc - res->segBytecode;
-	if (_stackPtr == 0xFF) {
-		error("VirtualMachine::op_call() ec=0x%X stack overflow", 0x8F);
-	}
-	++_stackPtr;
-	_scriptPtr.pc = res->segBytecode + offset ;
-}
-
-void VirtualMachine::op_ret() {
-	debug(DBG_VM, "VirtualMachine::op_ret()");
-	if (_stackPtr == 0) {
-		error("VirtualMachine::op_ret() ec=0x%X stack underflow", 0x8F);
-	}	
-	--_stackPtr;
-	uint8_t sp = _stackPtr;
-	_scriptPtr.pc = res->segBytecode + _scriptStackCalls[sp];
-}
-
-void VirtualMachine::op_pauseThread() {
-	debug(DBG_VM, "VirtualMachine::op_pauseThread()");
-	gotoNextThread = true;
-}
-
-void VirtualMachine::op_jmp() {
-	uint16_t pcOffset = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_jmp(0x%02X)", pcOffset);
-	_scriptPtr.pc = res->segBytecode + pcOffset;	
-}
-
-void VirtualMachine::op_setSetVect() {
-	uint8_t threadId = _scriptPtr.fetchByte();
-	uint16_t pcOffsetRequested = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_setSetVect(0x%X, 0x%X)", threadId,pcOffsetRequested);
-	threadsData[REQUESTED_PC_OFFSET][threadId] = pcOffsetRequested;
-}
-
-void VirtualMachine::op_jnz() {
-	uint8_t i = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_jnz(0x%02X)", i);
-	--vmVariables[i];
-	if (vmVariables[i] != 0) {
-		op_jmp();
-	} else {
-		_scriptPtr.fetchWord();
-	}
-}
-
-void VirtualMachine::op_condJmp() {
-	uint8_t opcode = _scriptPtr.fetchByte();
-  const uint8_t var = _scriptPtr.fetchByte();
-  int16_t b = vmVariables[var];
-	int16_t a;
-
-	if (opcode & 0x80) {
-		a = vmVariables[_scriptPtr.fetchByte()];
-	} else if (opcode & 0x40) {
-    a = _scriptPtr.fetchWord();
-	} else {
-    a = _scriptPtr.fetchByte();
-	}
-	debug(DBG_VM, "VirtualMachine::op_condJmp(%d, 0x%02X, 0x%02X)", opcode, b, a);
-
-	// Check if the conditional value is met.
-	bool expr = false;
-	switch (opcode & 7) {
-	case 0:	// jz
-		expr = (b == a);
+auto VirtualMachine::reset() -> void
+{
+    LOG_DEBUG("resetting...");
+    for(auto& _register : _registers) {
+        _register.u = 0x0000;
+    }
+    _registers[VM_VARIABLE_RANDOM_SEED].u = static_cast<uint16_t>(::time(nullptr));
+    _registers[0xe4].u = 0x0014; // DOS Version
+#ifdef OUT_OF_THIS_WORLD
+    _registers[0x54].u = 0x0081; // Out Of This World
+#else
+    _registers[0x54].u = 0x0001; // Another World
+#endif
 #ifdef BYPASS_PROTECTION
-      if (res->currentPartId == 16000) {
-        //
-        // 0CB8: jmpIf(VAR(0x29) == VAR(0x1E), @0CD3)
-        // ...
-        //
-        if (b == 0x29 && (opcode & 0x80) != 0) {
-          // 4 symbols
-          vmVariables[0x29] = vmVariables[0x1E];
-          vmVariables[0x2A] = vmVariables[0x1F];
-          vmVariables[0x2B] = vmVariables[0x20];
-          vmVariables[0x2C] = vmVariables[0x21];
-          // counters
-          vmVariables[0x32] = 6;
-          vmVariables[0x64] = 20;
-          warning("Script::op_condJmp() bypassing protection");
-          expr = true;
+    _registers[0xbc].u = 0x0010; // set by the game protection code
+    _registers[0xc6].u = 0x0080; // set by the game protection code
+    _registers[0xdc].u = 0x0021; // set by the game protection code
+    _registers[0xf2].u = 0x0fa0; // set by the game protection code
+#endif
+    LOG_DEBUG("reset!");
+}
+
+auto VirtualMachine::stop() -> void
+{
+    LOG_DEBUG("stopping...");
+    LOG_DEBUG("stopped!");
+}
+
+auto VirtualMachine::setByteCode(const uint8_t* bytecode) -> void
+{
+    auto set_bytecode = [&]() -> void
+    {
+        _bytecode.reset(bytecode);
+    };
+
+    auto reset_threads = [&]() -> void
+    {
+        auto& thread0(_threads[0]);
+        for(auto& thread : _threads) {
+            thread.current_pc      = 0xffff;
+            thread.requested_pc    = 0xffff;
+            thread.current_state   = 0;
+            thread.requested_state = 0;
+            thread.opcode          = 0x3f;
+            thread.yield           = false;
         }
-      }
+        thread0.current_pc   = 0x0000;
+        thread0.requested_pc = 0xffff;
+    };
+
+    auto reset_registers = [&]() -> void
+    {
+        constexpr uint16_t zero = 0;
+        for(auto& _register : _registers) {
+            _register.u |= zero;
+        }
+    };
+
+    auto reset_stack = [&]() -> void
+    {
+        constexpr uint16_t zero = 0;
+        for(auto& value : _stack.array) {
+            value &= zero;
+        }
+        _stack.index = 0;
+    };
+
+    set_bytecode();
+    reset_threads();
+    reset_registers();
+    reset_stack();
+}
+
+auto VirtualMachine::run(Controls& controls) -> void
+{
+    auto is_ready = [&]() -> bool
+    {
+        _currTicks = _engine.getTicks();
+        if(_engine.isStopped() || _engine.isPaused()) {
+            _nextTicks = _currTicks + 100;
+            return false;
+        }
+        if(_currTicks >= _nextTicks) {
+            _prevTicks = _nextTicks;
+            return true;
+        }
+        return false;
+    };
+
+    auto process_inputs = [&]() -> void
+    {
+        _registers[VM_VARIABLE_INPUT_KEY].s            = 0;
+        _registers[VM_VARIABLE_HERO_POS_LEFT_RIGHT].s  = controls.horz;
+        _registers[VM_VARIABLE_HERO_POS_UP_DOWN].s     = controls.vert;
+        _registers[VM_VARIABLE_HERO_POS_JUMP_DOWN].s   = controls.vert;
+        _registers[VM_VARIABLE_HERO_POS_MASK].u        = controls.mask;
+        _registers[VM_VARIABLE_HERO_ACTION].s          = controls.btns;
+        _registers[VM_VARIABLE_HERO_ACTION_POS_MASK].u = controls.mask;
+
+        if(controls.input != '\0') {
+            _registers[VM_VARIABLE_INPUT_KEY].s = controls.input;
+            controls.input = '\0';
+        }
+    };
+
+    auto run_one_thread = [&](Thread& thread) -> void
+    {
+        thread.opcode = 0x3f;
+        thread.yield  = false;
+        if((thread.current_pc >= 0xffff) || (thread.current_state != 0)) {
+            thread.yield = true;
+        }
+        if(thread.yield == false) {
+            _bytecode.seek(thread.current_pc);
+            do {
+                thread.opcode = _bytecode.fetchByte();
+                switch(thread.opcode) {
+                    case 0x00: // movi [$x],u16
+                        op_movi(thread);
+                        break;
+                    case 0x01: // movr [$x],[$y]
+                        op_movr(thread);
+                        break;
+                    case 0x02: // addr [$x],[$y]
+                        op_addr(thread);
+                        break;
+                    case 0x03: // addi [$x],u16
+                        op_addi(thread);
+                        break;
+                    case 0x04: // call u16
+                        op_call(thread);
+                        break;
+                    case 0x05: // ret
+                        op_ret(thread);
+                        break;
+                    case 0x06: // yield
+                        op_yield(thread);
+                        break;
+                    case 0x07: // jump u16
+                        op_jump(thread);
+                        break;
+                    case 0x08: // init thread:u08,u16
+                        op_init(thread);
+                        break;
+                    case 0x09: // djnz $[x],u16
+                        op_djnz(thread);
+                        break;
+                    case 0x0a: // cjmp cond:u08,$[x],y
+                        op_cjmp(thread);
+                        break;
+                    case 0x0b: // palette pal:u16
+                        op_palette(thread);
+                        break;
+                    case 0x0c: // reset begin:u08,end:u08,state:u08
+                        op_reset(thread);
+                        break;
+                    case 0x0d: // page src:u08
+                        op_page(thread);
+                        break;
+                    case 0x0e: // fill dst:u08,col:u08
+                        op_fill(thread);
+                        break;
+                    case 0x0f: // copy dst:u08,src:u08
+                        op_copy(thread);
+                        break;
+                    case 0x10: // blit src:u08
+                        op_blit(thread);
+                        break;
+                    case 0x11: // kill
+                        op_kill(thread);
+                        break;
+                    case 0x12: // print string:u16,x:u08,y:u08,color:u08
+                        op_print(thread);
+                        break;
+                    case 0x13: // subr [$x],[$y]
+                        op_subr(thread);
+                        break;
+                    case 0x14: // andi [$x],u16
+                        op_andi(thread);
+                        break;
+                    case 0x15: // iori [$x],u16
+                        op_iori(thread);
+                        break;
+                    case 0x16: // shli [$x],u16
+                        op_shli(thread);
+                        break;
+                    case 0x17: // shri [$x],u16
+                        op_shri(thread);
+                        break;
+                    case 0x18: // sound id:u16,frequency:u08,volume:u08,channel:u08
+                        op_sound(thread);
+                        break;
+                    case 0x19: // loadres id:u16
+                        op_loadres(thread);
+                        break;
+                    case 0x1a: // music id:u16,delay:u16,position:u08
+                        op_music(thread);
+                        break;
+                    case 0x1b ... 0x3f:
+                        op_invalid(thread);
+                        break;
+                    case 0x40 ... 0x7f:
+                        op_poly1(thread);
+                        break;
+                    case 0x80 ... 0xff:
+                        op_poly2(thread);
+                        break;
+                    default:
+                        op_invalid(thread);
+                        break;
+                }
+                thread.current_pc = _bytecode.offset();
+            } while(thread.yield == false);
+        }
+        thread.opcode = 0x3f;
+        thread.yield  = false;
+    };
+
+    auto run_all_threads = [&]() -> void
+    {
+        LOG_DEBUG("+---+-----+\t");
+        LOG_DEBUG("|tid|where|\t");
+        LOG_DEBUG("+---+-----+\t");
+        for(auto& thread : _threads) {
+            thread.current_state = thread.requested_state;
+            if(thread.requested_pc != 0xffff) {
+                if(thread.requested_pc != 0xfffe) {
+                    thread.current_pc   = thread.requested_pc;
+                    thread.requested_pc = 0xffff;
+                }
+                else {
+                    thread.current_pc   = 0xffff;
+                    thread.requested_pc = 0xffff;
+                }
+            }
+        }
+        for(auto& thread : _threads) {
+            run_one_thread(thread);
+        }
+        LOG_DEBUG("+---+-----+\t");
+        LOG_DEBUG("");
+    };
+
+    auto schedule = [&]() -> void
+    {
+        const uint32_t pause = _registers[VM_VARIABLE_PAUSE_SLICES].u;
+        const uint32_t delay = pause * 20;
+
+        _currTicks = _engine.getTicks();
+        _nextTicks = _prevTicks + delay;
+
+        if(_nextTicks <= _currTicks) {
+            _nextTicks = _currTicks + 1;
+        }
+    };
+
+    if(is_ready()) {
+        process_inputs();
+        run_all_threads();
+        schedule();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// VirtualMachine: load/store instructions
+// ---------------------------------------------------------------------------
+
+auto VirtualMachine::op_movr(Thread& thread) -> void
+{
+    const uint8_t dst = _bytecode.fetchByte();
+    const uint8_t src = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],[$%02x]", thread.thread_id, thread.current_pc, "movr", dst, src);
+
+    _registers[dst].u = _registers[src].u;
+}
+
+auto VirtualMachine::op_movi(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],$%04x", thread.thread_id, thread.current_pc, "movi", dst, imm);
+
+    _registers[dst].u = imm;
+}
+
+// ---------------------------------------------------------------------------
+// VirtualMachine: arithmetic and logic instructions
+// ---------------------------------------------------------------------------
+
+auto VirtualMachine::op_addr(Thread& thread) -> void
+{
+    const uint8_t dst = _bytecode.fetchByte();
+    const uint8_t src = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],[$%02x]", thread.thread_id, thread.current_pc, "addr", dst, src);
+
+    _registers[dst].u += _registers[src].u;
+}
+
+auto VirtualMachine::op_addi(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],$%04x", thread.thread_id, thread.current_pc, "addi", dst, imm);
+
+    _registers[dst].u += imm;
+}
+
+auto VirtualMachine::op_subr(Thread& thread) -> void
+{
+    const uint8_t dst = _bytecode.fetchByte();
+    const uint8_t src = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],[$%02x]", thread.thread_id, thread.current_pc, "subr", dst, src);
+
+    _registers[dst].u -= _registers[src].u;
+}
+
+auto VirtualMachine::op_andi(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],$%02x", thread.thread_id, thread.current_pc, "andi", dst, imm);
+
+    _registers[dst].u &= imm;
+}
+
+auto VirtualMachine::op_iori(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],$%02x", thread.thread_id, thread.current_pc, "iori", dst, imm);
+
+    _registers[dst].u |= imm;
+}
+
+auto VirtualMachine::op_shli(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],%d", thread.thread_id, thread.current_pc, "shli", dst, imm);
+
+    _registers[dst].u <<= imm;
+}
+
+auto VirtualMachine::op_shri(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],%d", thread.thread_id, thread.current_pc, "shri", dst, imm);
+
+    _registers[dst].u >>= imm;
+}
+
+// ---------------------------------------------------------------------------
+// VirtualMachine: jump and call instructions
+// ---------------------------------------------------------------------------
+
+auto VirtualMachine::op_jump(Thread& thread) -> void
+{
+    const uint16_t loc = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%04x", thread.thread_id, thread.current_pc, "jump", loc);
+
+    _bytecode.seek(loc);
+}
+
+auto VirtualMachine::op_cjmp(Thread& thread) -> void
+{
+    const uint8_t  variant = _bytecode.fetchByte();
+    const uint8_t  compare = variant & 0x07;
+    const uint8_t  rg1     = _bytecode.fetchByte();
+    const uint16_t op1     = _registers[rg1].u;
+    uint8_t        rg2     = 0;
+    uint16_t       op2     = 0;
+    uint16_t       loc     = 0;
+
+    if(variant & 0x80) {
+        rg2 = _bytecode.fetchByte();
+        op2 = _registers[rg2].u;
+        loc = _bytecode.fetchWord();
+        LOG_DEBUG("|$%02x|$%04x|\t%-7s %s,[$%02x],[$%02x],$%04x", thread.thread_id, thread.current_pc, "jump", condition[compare], rg1, rg2, loc);
+    }
+    else if(variant & 0x40) {
+        op2 = _bytecode.fetchWord();
+        loc = _bytecode.fetchWord();
+        LOG_DEBUG("|$%02x|$%04x|\t%-7s %s,[$%02x],$%04x,$%04x", thread.thread_id, thread.current_pc, "jump", condition[compare], rg1, op2, loc);
+    }
+    else {
+        op2 = _bytecode.fetchByte();
+        loc = _bytecode.fetchWord();
+        LOG_DEBUG("|$%02x|$%04x|\t%-7s %s,[$%02x],$%02x,$%04x", thread.thread_id, thread.current_pc, "jump", condition[compare], rg1, op2, loc);
+    }
+#ifdef BYPASS_PROTECTION
+    if((compare == 0) && (rg1 == 0x29) && (rg2 == 0x1e)) {
+        if(_engine.getCurPartId() == GAME_PART0) {
+            LOG_DEBUG("bypassing protection...");
+            // 4 symbols
+            _registers[0x29].u = _registers[0x1e].u;
+            _registers[0x2a].u = _registers[0x1f].u;
+            _registers[0x2b].u = _registers[0x20].u;
+            _registers[0x2c].u = _registers[0x21].u;
+            // counters
+            _registers[0x32].u = 0x06;
+            _registers[0x64].u = 0x14;
+            // seek
+            _bytecode.seek(loc);
+            return;
+        }
+    }
 #endif
-		break;
-	case 1: // jnz
-		expr = (b != a);
-		break;
-	case 2: // jg
-		expr = (b > a);
-		break;
-	case 3: // jge
-		expr = (b >= a);
-		break;
-	case 4: // jl
-		expr = (b < a);
-		break;
-	case 5: // jle
-		expr = (b <= a);
-		break;
-	default:
-		warning("VirtualMachine::op_condJmp() invalid condition %d", (opcode & 7));
-		break;
-	}
-
-	if (expr) {
-		op_jmp();
-	} else {
-		_scriptPtr.fetchWord();
-	}
-
+    switch(compare) {
+        case 0: // eq: equal
+            if(static_cast<int16_t>(op1) == static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        case 1: // ne: not equal
+            if(static_cast<int16_t>(op1) != static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        case 2: // gt: greater than
+            if(static_cast<int16_t>(op1) > static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        case 3: // ge: greater or equal
+            if(static_cast<int16_t>(op1) >= static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        case 4: // lt: less than
+            if(static_cast<int16_t>(op1) < static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        case 5: // le: less or equal
+            if(static_cast<int16_t>(op1) <= static_cast<int16_t>(op2)) {
+                _bytecode.seek(loc);
+            }
+            break;
+        default:
+            log_fatal("invalid conditional jump 0x%02x", compare);
+            break;
+    }
 }
 
-void VirtualMachine::op_setPalette() {
-	uint16_t paletteId = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_changePalette(%d)", paletteId);
-	video->paletteIdRequested = paletteId >> 8;
+auto VirtualMachine::op_djnz(Thread& thread) -> void
+{
+    const uint8_t  dst = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s [$%02x],$%04x", thread.thread_id, thread.current_pc, "djnz", dst, imm);
+
+    if(--_registers[dst].u != 0) {
+        _bytecode.seek(imm);
+    }
 }
 
-void VirtualMachine::op_resetThread() {
+auto VirtualMachine::op_call(Thread& thread) -> void
+{
+    if(_stack.index >= countof(_stack.array)) {
+        log_fatal("virtual machine had a stack overflow while executing 'call'");
+    }
+    const uint16_t loc = _bytecode.fetchWord();
 
-	uint8_t threadId = _scriptPtr.fetchByte();
-	uint8_t i =        _scriptPtr.fetchByte();
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%04x", thread.thread_id, thread.current_pc, "call", loc);
 
-	// FCS: WTF, this is cryptic as hell !!
-	//int8_t n = (i & 0x3F) - threadId;  //0x3F = 0011 1111
-	// The following is so much clearer
-
-	//Make sure i within [0-VM_NUM_THREADS-1]
-	i = i & (VM_NUM_THREADS-1) ;
-	int8_t n = i - threadId;
-
-	if (n < 0) {
-		warning("VirtualMachine::op_resetThread() ec=0x%X (n < 0)", 0x880);
-		return;
-	}
-	++n;
-	uint8_t a = _scriptPtr.fetchByte();
-
-	debug(DBG_VM, "VirtualMachine::op_resetThread(%d, %d, %d)", threadId, i, a);
-
-	if (a == 2) {
-		uint16_t *p = &threadsData[REQUESTED_PC_OFFSET][threadId];
-		while (n--) {
-			*p++ = 0xFFFE;
-		}
-	} else if (a < 2) {
-		uint8_t *p = &vmIsChannelActive[REQUESTED_STATE][threadId];
-		while (n--) {
-			*p++ = a;
-		}
-	}
+    _stack.array[_stack.index++] = _bytecode.offset();
+    _bytecode.seek(loc);
 }
 
-void VirtualMachine::op_selectVideoPage() {
-	uint8_t frameBufferId = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_selectVideoPage(%d)", frameBufferId);
-	video->changePagePtr1(frameBufferId);
+auto VirtualMachine::op_ret(Thread& thread) -> void
+{
+    if(_stack.index == 0) {
+        log_fatal("virtual machine had a stack underflow while executing 'ret'");
+    }
+    const uint16_t loc = _stack.array[--_stack.index];
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s (return to caller)", thread.thread_id, thread.current_pc, "ret");
+
+    _bytecode.seek(loc);
 }
 
-void VirtualMachine::op_fillVideoPage() {
-	uint8_t pageId = _scriptPtr.fetchByte();
-	uint8_t color = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_fillVideoPage(%d, %d)", pageId, color);
-	video->fillPage(pageId, color);
+// ---------------------------------------------------------------------------
+// VirtualMachine: thread management instructions
+// ---------------------------------------------------------------------------
+
+auto VirtualMachine::op_init(Thread& thread) -> void
+{
+    const uint8_t  tid = _bytecode.fetchByte();
+    const uint16_t imm = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,$%04x", thread.thread_id, thread.current_pc, "init", tid, imm);
+
+    _threads[tid].requested_pc = imm;
 }
 
-void VirtualMachine::op_copyVideoPage() {
-	uint8_t srcPageId = _scriptPtr.fetchByte();
-	uint8_t dstPageId = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_copyVideoPage(%d, %d)", srcPageId, dstPageId);
-	video->copyPage(srcPageId, dstPageId, vmVariables[VM_VARIABLE_SCROLL_Y]);
+auto VirtualMachine::op_kill(Thread& thread) -> void
+{
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s (kill this thread)", thread.thread_id, thread.current_pc, "kill");
+
+    _bytecode.seek(0xffff);
+    thread.yield = true;
 }
 
+auto VirtualMachine::op_yield(Thread& thread) -> void
+{
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s (goto next thread)", thread.thread_id, thread.current_pc, "yield");
 
-uint32_t lastTimeStamp = 0;
-void VirtualMachine::op_blitFramebuffer() {
-
-	uint8_t pageId = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_blitFramebuffer(%d)", pageId);
-	inp_handleSpecialKeys();
-
-  int32_t delay = sys->getTimeStamp() - lastTimeStamp;
-  int32_t timeToSleep = vmVariables[VM_VARIABLE_PAUSE_SLICES] * 20 - delay;
-
-  // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
-  // The virtual machine hence indicate how long the image should be displayed.
-
-  if (timeToSleep > 0) {
-    sys->sleep(timeToSleep);
-  }
-
-  lastTimeStamp = sys->getTimeStamp();
-
-	//WTF ?
-	vmVariables[0xF7] = 0;
-
-	video->updateDisplay(pageId);
+    thread.yield = true;
 }
 
-void VirtualMachine::op_killThread() {
-	debug(DBG_VM, "VirtualMachine::op_killThread()");
-	_scriptPtr.pc = res->segBytecode + 0xFFFF;
-	gotoNextThread = true;
+auto VirtualMachine::op_reset(Thread& thread) -> void
+{
+    const uint8_t begin = _bytecode.fetchByte();
+    const uint8_t end   = _bytecode.fetchByte();
+    const uint8_t state = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,$%02x,$%02x", thread.thread_id, thread.current_pc, "reset", begin, end, state);
+
+    switch(state) {
+        case 0:
+        case 1:
+            for(int index = begin; index <= end; ++index) {
+                _threads[index].requested_state = state;
+            }
+            break;
+        case 2:
+            for(int index = begin; index <= end; ++index) {
+                _threads[index].requested_pc = 0xfffe;
+            }
+            break;
+        default:
+            log_fatal("op_reset has failed [state: 0x%02x]", state);
+            break;
+    }
 }
 
-void VirtualMachine::op_drawString() {
-	uint16_t stringId = _scriptPtr.fetchWord();
-	uint16_t x = _scriptPtr.fetchByte();
-	uint16_t y = _scriptPtr.fetchByte();
-	uint16_t color = _scriptPtr.fetchByte();
+// ---------------------------------------------------------------------------
+// VirtualMachine: resources instructions
+// ---------------------------------------------------------------------------
 
-	debug(DBG_VM, "VirtualMachine::op_drawString(0x%03X, %d, %d, %d)", stringId, x, y, color);
+auto VirtualMachine::op_loadres(Thread& thread) -> void
+{
+    const uint16_t id = _bytecode.fetchWord();
 
-	video->drawString(color, x, y, stringId);
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x", thread.thread_id, thread.current_pc, "loadres", id);
+
+    _engine.loadResource(id);
 }
 
-void VirtualMachine::op_sub() {
-	uint8_t i = _scriptPtr.fetchByte();
-	uint8_t j = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_sub(0x%02X, 0x%02X)", i, j);
-	vmVariables[i] -= vmVariables[j];
+auto VirtualMachine::op_palette(Thread& thread) -> void
+{
+    const uint16_t palette = _bytecode.fetchWord();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%04x", thread.thread_id, thread.current_pc, "palette", palette);
+
+    _engine.selectPalette(palette >> 8);
 }
 
-void VirtualMachine::op_and() {
-	uint8_t variableId = _scriptPtr.fetchByte();
-	uint16_t n = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_and(0x%02X, %d)", variableId, n);
-	vmVariables[variableId] = (uint16_t)vmVariables[variableId] & n;
+auto VirtualMachine::op_page(Thread& thread) -> void
+{
+    const uint8_t dst = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x", thread.thread_id, thread.current_pc, "page", dst);
+
+    _engine.selectPage(dst);
 }
 
-void VirtualMachine::op_or() {
-	uint8_t variableId = _scriptPtr.fetchByte();
-	uint16_t value = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_or(0x%02X, %d)", variableId, value);
-	vmVariables[variableId] = (uint16_t)vmVariables[variableId] | value;
+auto VirtualMachine::op_fill(Thread& thread) -> void
+{
+    const uint8_t dst = _bytecode.fetchByte();
+    const uint8_t col = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,$%02x", thread.thread_id, thread.current_pc, "fill", dst, col);
+
+    _engine.fillPage(dst, col);
 }
 
-void VirtualMachine::op_shl() {
-	uint8_t variableId = _scriptPtr.fetchByte();
-	uint16_t leftShiftValue = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_shl(0x%02X, %d)", variableId, leftShiftValue);
-	vmVariables[variableId] = (uint16_t)vmVariables[variableId] << leftShiftValue;
+auto VirtualMachine::op_copy(Thread& thread) -> void
+{
+    const uint8_t src = _bytecode.fetchByte();
+    const uint8_t dst = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,$%02x", thread.thread_id, thread.current_pc, "copy", dst, src);
+
+    _engine.copyPage(dst, src, _registers[VM_VARIABLE_SCROLL_Y].u);
 }
 
-void VirtualMachine::op_shr() {
-	uint8_t variableId = _scriptPtr.fetchByte();
-	uint16_t rightShiftValue = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_shr(0x%02X, %d)", variableId, rightShiftValue);
-	vmVariables[variableId] = (uint16_t)vmVariables[variableId] >> rightShiftValue;
+auto VirtualMachine::op_blit(Thread& thread) -> void
+{
+    const uint8_t src = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x", thread.thread_id, thread.current_pc, "blit", src);
+
+    _engine.blitPage(src);
 }
 
-void VirtualMachine::op_playSound() {
-	uint16_t resourceId = _scriptPtr.fetchWord();
-	uint8_t freq = _scriptPtr.fetchByte();
-	uint8_t vol = _scriptPtr.fetchByte();
-	uint8_t channel = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_playSound(0x%X, %d, %d, %d)", resourceId, freq, vol, channel);
-	snd_playSound(resourceId, freq, vol, channel);
+auto VirtualMachine::op_print(Thread& thread) -> void
+{
+    const uint16_t string = _bytecode.fetchWord();
+    const uint8_t  text_x = _bytecode.fetchByte();
+    const uint8_t  text_y = _bytecode.fetchByte();
+    const uint8_t  color  = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%03x,%d,%d,%d", thread.thread_id, thread.current_pc, "print", string, text_x, text_y, color);
+
+    _engine.drawString(string, text_x, text_y, color);
 }
 
-void VirtualMachine::op_updateMemList() {
+auto VirtualMachine::op_sound(Thread& thread) -> void
+{
+    const uint16_t sound_id  = _bytecode.fetchWord();
+    const uint8_t  frequency = _bytecode.fetchByte();
+    const uint8_t  volume    = _bytecode.fetchByte();
+    const uint8_t  channel   = _bytecode.fetchByte();
 
-	uint16_t resourceId = _scriptPtr.fetchWord();
-	debug(DBG_VM, "VirtualMachine::op_updateMemList(%d)", resourceId);
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,%d,%d,%d", thread.thread_id, thread.current_pc, "sound", sound_id, frequency, volume, channel);
 
-	if (resourceId == 0) {
-		player->stop();
-		mixer->stopAll();
-		res->invalidateRes();
-	} else {
-		res->loadPartsOrMemoryEntry(resourceId);
-	}
+    _engine.playSound(sound_id, channel, volume, frequency);
 }
 
-void VirtualMachine::op_playMusic() {
-	uint16_t resNum = _scriptPtr.fetchWord();
-	uint16_t delay = _scriptPtr.fetchWord();
-	uint8_t pos = _scriptPtr.fetchByte();
-	debug(DBG_VM, "VirtualMachine::op_playMusic(0x%X, %d, %d)", resNum, delay, pos);
-	snd_playMusic(resNum, delay, pos);
+auto VirtualMachine::op_music(Thread& thread) -> void
+{
+    const uint16_t music_id = _bytecode.fetchWord();
+    const uint16_t delay    = _bytecode.fetchWord();
+    const uint8_t  position = _bytecode.fetchByte();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x,%d,%d", thread.thread_id, thread.current_pc, "music", music_id, delay, position);
+
+    _engine.playMusic(music_id, position, delay);
 }
 
-void VirtualMachine::initForPart(uint16_t partId) {
+auto VirtualMachine::op_poly1(Thread& thread) -> void
+{
+    int polygonDataIndex = 1;
 
-	player->stop();
-	mixer->stopAll();
+    auto get_offset = [&]() -> uint16_t
+    {
+        const uint16_t imm = _bytecode.fetchWord();
 
-	//WTF is that ?
-	vmVariables[0xE4] = 0x14;
+        return imm * 2;
+    };
 
-	res->setupPart(partId);
+    auto get_poly_x = [&]() -> int16_t
+    {
+        uint16_t imm = static_cast<uint16_t>(_bytecode.fetchByte());
 
-	//Set all thread to inactive (pc at 0xFFFF or 0xFFFE )
-	memset((uint8_t *)threadsData, 0xFF, sizeof(threadsData));
+        if(thread.opcode & 0x20) {
+            if(thread.opcode & 0x10) {
+                imm += 0x100;
+            }
+        }
+        else {
+            if(thread.opcode & 0x10) {
+                imm = _registers[imm].u;
+            }
+            else {
+                imm = (imm << 8) | static_cast<uint16_t>(_bytecode.fetchByte());
+            }
+        }
+        return imm;
+    };
 
+    auto get_poly_y = [&]() -> int16_t
+    {
+        uint16_t imm = static_cast<uint16_t>(_bytecode.fetchByte());
 
-	memset((uint8_t *)vmIsChannelActive, 0, sizeof(vmIsChannelActive));
-	
-	int firstThreadId = 0;
-	threadsData[PC_OFFSET][firstThreadId] = 0;	
+        if(thread.opcode & 0x08) {
+            if(thread.opcode & 0x04) {
+                imm += 0x000;
+            }
+        }
+        else {
+            if(thread.opcode & 0x04) {
+                imm = _registers[imm].u;
+            }
+            else {
+                imm = (imm << 8) | static_cast<uint16_t>(_bytecode.fetchByte());
+            }
+        }
+        return imm;
+    };
+
+    auto get_zoom = [&]() -> uint16_t
+    {
+        uint16_t imm = 0x40;
+
+        if(thread.opcode & 0x02) {
+            if(thread.opcode & 0x01) {
+                polygonDataIndex = 2;
+                imm = 0x40;
+            }
+            else {
+                imm = _bytecode.fetchByte();
+            }
+        }
+        else {
+            if(thread.opcode & 0x01) {
+                imm = _registers[_bytecode.fetchByte()].u;
+            }
+            else {
+                imm = 0x40;
+            }
+        }
+        return imm;
+    };
+
+    auto get_point = [&](int16_t x, int16_t y) -> Point
+    {
+        return Point(x, y);
+    };
+
+    auto get_buffer = [&]() -> const uint8_t*
+    {
+        return _engine.getPolygonData(polygonDataIndex);
+    };
+
+    const uint16_t offset = get_offset();
+    const int16_t  poly_x = get_poly_x();
+    const int16_t  poly_y = get_poly_y();
+    const uint16_t zoom   = get_zoom();
+    const uint8_t* buffer = get_buffer();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s (buffer: %d, offset: %d, x: %d, y: %d, zoom: %d)", thread.thread_id, thread.current_pc, "poly1", polygonDataIndex, offset, poly_x, poly_y, zoom);
+
+    _engine.drawPolygons(buffer, offset, get_point(poly_x, poly_y), zoom);
 }
 
-/* 
-     This is called every frames in the infinite loop.
-*/
-void VirtualMachine::checkThreadRequests() {
+auto VirtualMachine::op_poly2(Thread& thread) -> void
+{
+    int polygonDataIndex = 1;
 
-	//Check if a part switch has been requested.
-	if (res->requestedNextPart != 0) {
-		initForPart(res->requestedNextPart);
-		res->requestedNextPart = 0;
-	}
+    auto get_offset = [&]() -> uint16_t
+    {
+        const uint16_t msb = static_cast<uint16_t>(thread.opcode) << 8;
+        const uint16_t lsb = static_cast<uint16_t>(_bytecode.fetchByte());
+        const uint16_t imm = (msb | lsb);
 
-	
-	// Check if a state update has been requested for any thread during the previous VM execution:
-	//      - Pause
-	//      - Jump
+        return imm * 2;
+    };
 
-	// JUMP:
-	// Note: If a jump has been requested, the jump destination is stored
-	// in threadsData[REQUESTED_PC_OFFSET]. Otherwise threadsData[REQUESTED_PC_OFFSET] == 0xFFFF
+    auto get_poly_x = [&]() -> int16_t
+    {
+        const uint16_t imm = static_cast<uint16_t>(_bytecode.fetchByte());
 
-	// PAUSE:
-	// Note: If a pause has been requested it is stored in  vmIsChannelActive[REQUESTED_STATE][i]
+        return imm;
+    };
 
-	for (int threadId = 0; threadId < VM_NUM_THREADS; threadId++) {
+    auto get_poly_y = [&]() -> int16_t
+    {
+        const uint16_t imm = static_cast<uint16_t>(_bytecode.fetchByte());
 
-		vmIsChannelActive[CURR_STATE][threadId] = vmIsChannelActive[REQUESTED_STATE][threadId];
+        return imm;
+    };
 
-		uint16_t n = threadsData[REQUESTED_PC_OFFSET][threadId];
+    auto get_zoom = [&]() -> uint16_t
+    {
+        const uint16_t imm = 0x40;
 
-		if (n != VM_NO_SETVEC_REQUESTED) {
+        return imm;
+    };
 
-			threadsData[PC_OFFSET][threadId] = (n == 0xFFFE) ? VM_INACTIVE_THREAD : n;
-			threadsData[REQUESTED_PC_OFFSET][threadId] = VM_NO_SETVEC_REQUESTED;
-		}
-	}
+    auto get_point = [&](int16_t x, int16_t y) -> Point
+    {
+        const int16_t h = (y - 199);
+        if(h > 0) {
+            y = 199;
+            x += h;
+        }
+        return Point(x, y);
+    };
+
+    auto get_buffer = [&]() -> const uint8_t*
+    {
+        return _engine.getPolygonData(polygonDataIndex);
+    };
+
+    const uint16_t offset = get_offset();
+    const int16_t  poly_x = get_poly_x();
+    const int16_t  poly_y = get_poly_y();
+    const uint16_t zoom   = get_zoom();
+    const uint8_t* buffer = get_buffer();
+
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s (buffer: %d, offset: %d, x: %d, y: %d, zoom: %d)", thread.thread_id, thread.current_pc, "poly2", polygonDataIndex, offset, poly_x, poly_y, zoom);
+
+    _engine.drawPolygons(buffer, offset, get_point(poly_x, poly_y), zoom);
 }
 
-void VirtualMachine::hostFrame() {
+auto VirtualMachine::op_invalid(Thread& thread) -> void
+{
+    LOG_DEBUG("|$%02x|$%04x|\t%-7s $%02x", thread.thread_id, thread.current_pc, "invalid", thread.opcode);
 
-	// Run the Virtual Machine for every active threads (one vm frame).
-	// Inactive threads are marked with a thread instruction pointer set to 0xFFFF (VM_INACTIVE_THREAD).
-	// A thread must feature a break opcode so the interpreter can move to the next thread.
-
-	for (int threadId = 0; threadId < VM_NUM_THREADS; threadId++) {
-
-		if (vmIsChannelActive[CURR_STATE][threadId])
-			continue;
-		
-		uint16_t n = threadsData[PC_OFFSET][threadId];
-
-		if (n != VM_INACTIVE_THREAD) {
-
-			// Set the script pointer to the right location.
-			// script pc is used in executeThread in order
-			// to get the next opcode.
-			_scriptPtr.pc = res->segBytecode + n;
-			_stackPtr = 0;
-
-			gotoNextThread = false;
-			debug(DBG_VM, "VirtualMachine::hostFrame() i=0x%02X n=0x%02X *p=0x%02X", threadId, n, *_scriptPtr.pc);
-			executeThread();
-
-			//Since .pc is going to be modified by this next loop iteration, we need to save it.
-			threadsData[PC_OFFSET][threadId] = _scriptPtr.pc - res->segBytecode;
-
-
-			debug(DBG_VM, "VirtualMachine::hostFrame() i=0x%02X pos=0x%X", threadId, threadsData[PC_OFFSET][threadId]);
-			if (sys->input.quit) {
-				break;
-			}
-		}
-		
-	}
+    log_fatal("invalid opcode 0x%02x at 0x%04x", thread.opcode, thread.current_pc);
 }
 
-#define COLOR_BLACK 0xFF
-#define DEFAULT_ZOOM 0x40
-
-
-void VirtualMachine::executeThread() {
-
-	while (!gotoNextThread) {
-		uint8_t opcode = _scriptPtr.fetchByte();
-
-		// 1000 0000 is set
-		if (opcode & 0x80) 
-		{
-			uint16_t off = ((opcode << 8) | _scriptPtr.fetchByte()) * 2;
-			res->_useSegVideo2 = false;
-			int16_t x = _scriptPtr.fetchByte();
-			int16_t y = _scriptPtr.fetchByte();
-			int16_t h = y - 199;
-			if (h > 0) {
-				y = 199;
-				x += h;
-			}
-			debug(DBG_VIDEO, "vid_opcd_0x80 : opcode=0x%X off=0x%X x=%d y=%d", opcode, off, x, y);
-
-			// This switch the polygon database to "cinematic" and probably draws a black polygon
-			// over all the screen.
-			video->setDataBuffer(res->segCinematic, off);
-			video->readAndDrawPolygon(COLOR_BLACK, DEFAULT_ZOOM, Point(x,y));
-
-			continue;
-		} 
-
-		// 0100 0000 is set
-		if (opcode & 0x40) 
-		{
-			int16_t x, y;
-			uint16_t off = _scriptPtr.fetchWord() * 2;
-			x = _scriptPtr.fetchByte();
-
-			res->_useSegVideo2 = false;
-
-			if (!(opcode & 0x20)) 
-			{
-				if (!(opcode & 0x10))  // 0001 0000 is set
-				{
-					x = (x << 8) | _scriptPtr.fetchByte();
-				} else {
-					x = vmVariables[x];
-				}
-			} 
-			else 
-			{
-				if (opcode & 0x10) { // 0001 0000 is set
-					x += 0x100;
-				}
-			}
-
-			y = _scriptPtr.fetchByte();
-
-			if (!(opcode & 8))  // 0000 1000 is set
-			{
-				if (!(opcode & 4)) { // 0000 0100 is set
-					y = (y << 8) | _scriptPtr.fetchByte();
-				} else {
-					y = vmVariables[y];
-				}
-			}
-
-			uint16_t zoom = _scriptPtr.fetchByte();
-
-			if (!(opcode & 2))  // 0000 0010 is set
-			{
-				if (!(opcode & 1)) // 0000 0001 is set
-				{
-					--_scriptPtr.pc;
-					zoom = 0x40;
-				} 
-				else 
-				{
-					zoom = vmVariables[zoom];
-				}
-			} 
-			else 
-			{
-				
-				if (opcode & 1) { // 0000 0001 is set
-					res->_useSegVideo2 = true;
-					--_scriptPtr.pc;
-					zoom = 0x40;
-				}
-			}
-			debug(DBG_VIDEO, "vid_opcd_0x40 : off=0x%X x=%d y=%d", off, x, y);
-			video->setDataBuffer(res->_useSegVideo2 ? res->_segVideo2 : res->segCinematic, off);
-			video->readAndDrawPolygon(0xFF, zoom, Point(x, y));
-
-			continue;
-		} 
-		 
-		
-		if (opcode > 0x1A) 
-		{
-			error("VirtualMachine::executeThread() ec=0x%X invalid opcode=0x%X", 0xFFF, opcode);
-		} 
-		else 
-		{
-			(this->*opcodeTable[opcode])();
-		}
-		
-	}
-}
-
-void VirtualMachine::inp_updatePlayer() {
-
-	sys->processEvents();
-
-	if (res->currentPartId == 0x3E89) {
-		char c = sys->input.lastChar;
-		if (c == 8 || /*c == 0xD |*/ c == 0 || (c >= 'a' && c <= 'z')) {
-			vmVariables[VM_VARIABLE_LAST_KEYCHAR] = c & ~0x20;
-			sys->input.lastChar = 0;
-		}
-	}
-
-	int16_t lr = 0;
-	int16_t m = 0;
-	int16_t ud = 0;
-
-	if (sys->input.dirMask & PlayerInput::DIR_RIGHT) {
-		lr = 1;
-		m |= 1;
-	}
-	if (sys->input.dirMask & PlayerInput::DIR_LEFT) {
-		lr = -1;
-		m |= 2;
-	}
-	if (sys->input.dirMask & PlayerInput::DIR_DOWN) {
-		ud = 1;
-		m |= 4;
-	}
-
-	vmVariables[VM_VARIABLE_HERO_POS_UP_DOWN] = ud;
-
-	if (sys->input.dirMask & PlayerInput::DIR_UP) {
-		vmVariables[VM_VARIABLE_HERO_POS_UP_DOWN] = -1;
-	}
-
-	if (sys->input.dirMask & PlayerInput::DIR_UP) { // inpJump
-		ud = -1;
-		m |= 8;
-	}
-
-	vmVariables[VM_VARIABLE_HERO_POS_JUMP_DOWN] = ud;
-	vmVariables[VM_VARIABLE_HERO_POS_LEFT_RIGHT] = lr;
-	vmVariables[VM_VARIABLE_HERO_POS_MASK] = m;
-	int16_t button = 0;
-
-	if (sys->input.button) { // inpButton
-		button = 1;
-		m |= 0x80;
-	}
-
-	vmVariables[VM_VARIABLE_HERO_ACTION] = button;
-	vmVariables[VM_VARIABLE_HERO_ACTION_POS_MASK] = m;
-}
-
-void VirtualMachine::inp_handleSpecialKeys() {
-
-	if (sys->input.pause) {
-
-		if (res->currentPartId != GAME_PART1 && res->currentPartId != GAME_PART2) {
-			sys->input.pause = false;
-			while (!sys->input.pause) {
-				sys->processEvents();
-				sys->sleep(200);
-			}
-		}
-		sys->input.pause = false;
-	}
-
-	if (sys->input.code) {
-		sys->input.code = false;
-		if (res->currentPartId != GAME_PART_LAST && res->currentPartId != GAME_PART_FIRST) {
-			res->requestedNextPart = GAME_PART_LAST;
-		}
-	}
-
-	// XXX
-	if (vmVariables[0xC9] == 1) {
-		warning("VirtualMachine::inp_handleSpecialKeys() unhandled case (vmVariables[0xC9] == 1)");
-	}
-
-}
-
-void VirtualMachine::snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel) {
-
-	debug(DBG_SND, "snd_playSound(0x%X, %d, %d, %d)", resNum, freq, vol, channel);
-	
-	MemEntry *me = &res->_memList[resNum];
-
-	if (me->state != MEMENTRY_STATE_LOADED)
-		return;
-
-	
-	if (vol == 0) {
-		mixer->stopChannel(channel);
-	} else {
-		MixerChunk mc;
-		memset(&mc, 0, sizeof(mc));
-		mc.data = me->bufPtr + 8; // skip header
-		mc.len = READ_BE_UINT16(me->bufPtr) * 2;
-		mc.loopLen = READ_BE_UINT16(me->bufPtr + 2) * 2;
-		if (mc.loopLen != 0) {
-			mc.loopPos = mc.len;
-		}
-		assert(freq < 40);
-		mixer->playChannel(channel & 3, &mc, frequenceTable[freq], MIN(vol, 0x3F));
-	}
-	
-}
-
-void VirtualMachine::snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos) {
-
-	debug(DBG_SND, "snd_playMusic(0x%X, %d, %d)", resNum, delay, pos);
-
-	if (resNum != 0) {
-		player->loadSfxModule(resNum, delay, pos);
-		player->start();
-	} else if (delay != 0) {
-		player->setEventsDelay(delay);
-	} else {
-		player->stop();
-	}
-}
-
-void VirtualMachine::saveOrLoad(Serializer &ser) {
-	Serializer::Entry entries[] = {
-		SE_ARRAY(vmVariables, 0x100, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(_scriptStackCalls, 0x100, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(threadsData, 0x40 * 2, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(vmIsChannelActive, 0x40 * 2, Serializer::SES_INT8, VER(1)),
-		SE_END()
-	};
-	ser.saveOrLoadEntries(entries);
-}
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------

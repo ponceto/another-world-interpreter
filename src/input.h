@@ -1,5 +1,5 @@
 /*
- * mixer.h - Copyright (c) 2004-2025
+ * input.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,30 +16,30 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_MIXER_H__
-#define __AW_MIXER_H__
+#ifndef __AW_INPUT_H__
+#define __AW_INPUT_H__
 
 #include "intern.h"
 
 // ---------------------------------------------------------------------------
-// Mixer
+// Input
 // ---------------------------------------------------------------------------
 
-class Mixer final
+class Input final
     : public SubSystem
 {
 public: // public interface
-    Mixer(Engine& engine, Audio& audio);
+    Input(Engine& engine);
 
-    Mixer(Mixer&&) = delete;
+    Input(Input&&) = delete;
 
-    Mixer(const Mixer&) = delete;
+    Input(const Input&) = delete;
 
-    Mixer& operator=(Mixer&&) = delete;
+    Input& operator=(Input&&) = delete;
 
-    Mixer& operator=(const Mixer&) = delete;
+    Input& operator=(const Input&) = delete;
 
-    virtual ~Mixer() = default;
+    virtual ~Input() = default;
 
     virtual auto start() -> void override final;
 
@@ -47,34 +47,23 @@ public: // public interface
 
     virtual auto stop() -> void override final;
 
-public: // public mixer interface
-    auto playAllChannels() -> void;
+public: // public input interface
+    auto getControls() -> Controls&
+    {
+        return _controls;
+    }
 
-    auto stopAllChannels() -> void;
-
-    auto playChannel(uint8_t channel, const AudioSample& sample) -> void;
-
-    auto stopChannel(uint8_t channel) -> void;
-
-    auto setChannelVolume(uint8_t channel, uint8_t volume) -> void;
-
-private: // private interface
-    auto startAudio() -> void;
-
-    auto resetAudio() -> void;
-
-    auto stopAudio() -> void;
-
-    auto processAudio(float* buffer, int length) -> void;
+    auto getControls() const -> const Controls&
+    {
+        return _controls;
+    }
 
 private: // private data
-    Audio&       _audio;
-    AudioChannel _channels[4];
-    uint32_t     _samplerate;
+    Controls _controls;
 };
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_MIXER_H__ */
+#endif /* __AW_INPUT_H__ */

@@ -1,8 +1,12 @@
 # ANOTHER WORLD INTERPRETER
 
-This is a quick and dirty fork and port of the [Another World Bytecode Interpreter](https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter) with [SDL2](https://www.libsdl.org/), targeting Linux and [WASM](https://en.wikipedia.org/wiki/WebAssembly) with [Emscripten](https://emscripten.org/).
+This is another « Another World » Bytecode Interpreter written in C++ and built with [SDL](https://www.libsdl.org/), targeting Linux, BSD and [WASM](https://en.wikipedia.org/wiki/WebAssembly) with [Emscripten](https://emscripten.org/).
 
-  - [Play Another World in your browser](https://www.emaxilde.net/assets/games/another-world/another-world.html)
+This is a fork of Fabien Sanglard's project, itself a fork of Gregory Montoir's original implementation, almost completely rewritten with a cleaner architecture and better code readability in mind, primarily for educational purposes.
+
+![Another World](share/another-world/another-world.png)
+
+You can play Another World directly in your browser by clicking [here](https://www.emaxilde.net/assets/games/another-world/another-world.html).
 
 ## COMPILE AND RUN FOR LINUX
 
@@ -16,22 +20,26 @@ Under Debian and derivatives (Ubuntu, Mint, ...):
 apt-get install build-essential libsdl2-dev zlib1g-dev
 ```
 
-### Install the data files
-
-The required game data files must be copied into the [src/assets](src/assets) directory.
-
-### Build and run the project
+### Build the project
 
 ```
-cd src
 make -f Makefile.linux
-./another-world.bin
 ```
 
-You can also run the provided build script:
+or
 
 ```
 ./build.sh linux
+```
+
+### Install the data files
+
+The original game data files must be copied into the [share/another-world](share/another-world) directory.
+
+### Run the project
+
+```
+./bin/another-world.bin
 ```
 
 ## COMPILE AND RUN FOR WASM
@@ -42,37 +50,67 @@ In order to build the WASM port, You must install the [Emscripten](https://emscr
 
   - [Download and install](https://emscripten.org/docs/getting_started/downloads.html)
 
-### Build and run the project
+### Build the project
 
 ```
-cd src
 make -f Makefile.wasm
-emrun ./another-world.html
 ```
 
-You can also run the provided build script:
+or
 
 ```
 ./build.sh wasm
 ```
 
+### Install the data files
+
+The original game data files must be copied into the [share/another-world](share/another-world) directory.
+
+### Run the project
+
+```
+emrun ./bin/another-world.html
+```
+
 ## COMMAND-LINE OPTIONS
 
-  - `--datapath=PATH` location of the game assets (default `./assets`)
-  - `--savepath=PATH` location of the game states (default `./assets`)
+```
+Usage: another-world.bin [OPTIONS...]
+
+Options:
+
+  -h, --help            display this help and exit
+
+  --datadir=PATH        directory where data files are stored
+  --dumpdir=PATH        directory where dump files are stored
+
+  --quiet               quiet mode
+  --debug               debug mode
+  --debug-all           debug all subsystems
+  --debug-engine        debug the engine subsystem
+  --debug-backend       debug the backend subsystem
+  --debug-resources     debug the resources subsystem
+  --debug-video         debug the video subsystem
+  --debug-audio         debug the audio subsystem
+  --debug-mixer         debug the mixer subsystem
+  --debug-sound         debug the sound subsystem
+  --debug-music         debug the music subsystem
+  --debug-input         debug the input subsystem
+  --debug-vm            debug the vm subsystem
+
+```
 
 ## GAME CONTROLS
 
   - `Up`, `Down`, `Left`, `Right` move
-  - `Space` or `Enter` run or fire
-  - `Tab` change the window size
+  - `Space` run or fire
+  - `Tab` or `<Shift>Tab` change the window size
+  - `0` ... `9` jump at a specific game part
   - `c` enter a code to jump at a specific level
   - `p` pause the game
-  - `Ctrl l` load game state
-  - `Ctrl s` save game state
-  - `Ctrl +` next game state slot
-  - `Ctrl -` prev game state slot
-  - `Ctrl x` exit the game
+  - `r` reset the game
+  - `m` toggle the display mode (standard/CRT)
+  - `v` change the video mode (RGB/RGB-ALT/VGA/EGA/CGA)
   - `Escape` exit the game
 
 ## RESOURCES
@@ -130,6 +168,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 ## DISCLAIMER
 
-The original data files are protected under the copyrights of their authors and are not distributed with this project.
+The original game data files are protected under the copyrights of their authors and are not distributed with this project.
 
-Please do not distribute the original data files with this project.
+```
+Please do not distribute the original data game files with this project.
+```
+
