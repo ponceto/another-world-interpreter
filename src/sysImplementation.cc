@@ -69,7 +69,7 @@ void SDLStub::init(const char *title) {
 	SDL_CaptureMouse(SDL_TRUE);
 
 	memset(&input, 0, sizeof(input));
-  _scale = DEFAULT_SCALE;
+	_scale = DEFAULT_SCALE;
 	prepareGfxMode();
 }
 
@@ -234,7 +234,7 @@ void SDLStub::startAudio(AudioCallback callback, void *param) {
 	desired.freq = SOUND_SAMPLE_RATE;
 	desired.format = AUDIO_U8;
 	desired.channels = 1;
-	desired.samples = 2048;
+	desired.samples = SOUND_SAMPLE_RATE / 25;
 	desired.callback = callback;
 	desired.userdata = param;
 	if (SDL_OpenAudio(&desired, NULL) == 0) {
@@ -281,7 +281,7 @@ void SDLStub::unlockMutex(void *mutex) {
 void SDLStub::cleanupGfxMode() {
 	if (_screen) {
 		SDL_FreeSurface(_screen);
-    _screen = 0;
+		_screen = nullptr;
 	}
 
 	if (_window) {
@@ -296,7 +296,7 @@ void SDLStub::cleanupGfxMode() {
 }
 
 void SDLStub::switchGfxMode() {
-  cleanupGfxMode();
+	cleanupGfxMode();
 	prepareGfxMode();
 }
 

@@ -270,24 +270,26 @@ void VirtualMachine::op_copyVideoPage() {
 }
 
 
-uint32_t lastTimeStamp = 0;
+uint32_t currTimeStamp = 0;
+uint32_t nextTimeStamp = 0;
+
 void VirtualMachine::op_blitFramebuffer() {
 
 	uint8_t pageId = _scriptPtr.fetchByte();
 	debug(DBG_VM, "VirtualMachine::op_blitFramebuffer(%d)", pageId);
 	inp_handleSpecialKeys();
 
-  int32_t delay = sys->getTimeStamp() - lastTimeStamp;
-  int32_t timeToSleep = vmVariables[VM_VARIABLE_PAUSE_SLICES] * 20 - delay;
+	int32_t elapsed = currTimeStamp - nextTimeStamp;
+	int32_t timeToSleep = vmVariables[VM_VARIABLE_PAUSE_SLICES] * 20 - elapsed;
 
-  // The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
-  // The virtual machine hence indicate how long the image should be displayed.
+	if(timeToSleep <= 0) {
+		timeToSleep = 1;
+	}
 
-  if (timeToSleep > 0) {
-    sys->sleep(timeToSleep);
-  }
+	nextTimeStamp = currTimeStamp + timeToSleep;
 
-  lastTimeStamp = sys->getTimeStamp();
+	// The bytecode will set vmVariables[VM_VARIABLE_PAUSE_SLICES] from 1 to 5
+	// The virtual machine hence indicate how long the image should be displayed.
 
 	//WTF ?
 	vmVariables[0xF7] = 0;
@@ -436,6 +438,11 @@ void VirtualMachine::checkThreadRequests() {
 }
 
 void VirtualMachine::hostFrame() {
+
+    currTimeStamp = sys->getTimeStamp();
+    if(currTimeStamp < nextTimeStamp) {
+        return;
+    }
 
 	// Run the Virtual Machine for every active threads (one vm frame).
 	// Inactive threads are marked with a thread instruction pointer set to 0xFFFF (VM_INACTIVE_THREAD).
