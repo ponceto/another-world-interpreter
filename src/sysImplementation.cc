@@ -98,7 +98,7 @@ void SDLStub::prepareGfxMode() {
   int w = SCREEN_W;
   int h = SCREEN_H;
 
-  _window = SDL_CreateWindow("Another World", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w * _scale, h * _scale, SDL_WINDOW_SHOWN);
+  _window = SDL_CreateWindow("Another World", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w * _scale, h * _scale, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
   _renderer = SDL_CreateRenderer(_window, -1, 0);
   _screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 8, 0, 0, 0, 0);
   if (!_screen) {
@@ -161,15 +161,15 @@ void SDLStub::processEvents() {
 				input.button = false;
 				break;
 			case SDLK_ESCAPE:
-        input.quit = true;
+				input.quit = true;
 				break;
 			}
 			break;
 		case SDL_KEYDOWN:
 			if (ev.key.keysym.mod & KMOD_CTRL) {
-        if (ev.key.keysym.sym == SDLK_x) {
-          input.quit = true;
-        } else if (ev.key.keysym.sym == SDLK_s) {
+				if (ev.key.keysym.sym == SDLK_x) {
+					input.quit = true;
+				} else if (ev.key.keysym.sym == SDLK_s) {
 					input.save = true;
 				} else if (ev.key.keysym.sym == SDLK_l) {
 					input.load = true;
@@ -178,7 +178,7 @@ void SDLStub::processEvents() {
 				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
 					input.stateSlot = -1;
 				}
-        break;
+				break;
 			}
 			input.lastChar = ev.key.keysym.sym;
 			switch(ev.key.keysym.sym) {
@@ -204,11 +204,11 @@ void SDLStub::processEvents() {
 			case SDLK_p:
 				input.pause = true;
 				break;
-			  case SDLK_TAB :
-          _scale = _scale + 1;
-        if (_scale > 4) { _scale = 1; }
-        switchGfxMode();
-        break;
+			case SDLK_TAB :
+				_scale = _scale + 1;
+				if (_scale > 4) { _scale = 1; }
+				switchGfxMode();
+				break;
 			default:
 				break;
 			}
@@ -285,13 +285,13 @@ void SDLStub::cleanupGfxMode() {
 	}
 
 	if (_window) {
-	  SDL_DestroyWindow(_window);
-	  _window = nullptr;
+		SDL_DestroyWindow(_window);
+		_window = nullptr;
 	}
 
 	if (_screen) {
-	  SDL_FreeSurface(_screen);
-	  _screen = nullptr;
+		SDL_FreeSurface(_screen);
+		_screen = nullptr;
 	}
 }
 
