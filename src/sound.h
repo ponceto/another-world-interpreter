@@ -1,5 +1,5 @@
 /*
- * mixer.h - Copyright (c) 2004-2025
+ * sound.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,30 +16,30 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_MIXER_H__
-#define __AW_MIXER_H__
+#ifndef __AW_SOUND_H__
+#define __AW_SOUND_H__
 
 #include "intern.h"
 
 // ---------------------------------------------------------------------------
-// Mixer
+// Sound
 // ---------------------------------------------------------------------------
 
-class Mixer final
+class Sound final
     : public SubSystem
 {
 public: // public interface
-    Mixer(Engine& engine, Audio& audio);
+    Sound(Engine& engine, Audio& audio);
 
-    Mixer(Mixer&&) = delete;
+    Sound(Sound&&) = delete;
 
-    Mixer(const Mixer&) = delete;
+    Sound(const Sound&) = delete;
 
-    Mixer& operator=(Mixer&&) = delete;
+    Sound& operator=(Sound&&) = delete;
 
-    Mixer& operator=(const Mixer&) = delete;
+    Sound& operator=(const Sound&) = delete;
 
-    virtual ~Mixer() = default;
+    virtual ~Sound() = default;
 
     virtual auto start() -> void override final;
 
@@ -47,27 +47,16 @@ public: // public interface
 
     virtual auto stop() -> void override final;
 
-public: // public mixer interface
-    auto mixAllChannels(float* buffer, int length) -> void;
-
-    auto playAllChannels() -> void;
-
-    auto stopAllChannels() -> void;
-
-    auto playChannel(uint8_t channel, const AudioSample& sample, uint16_t frequency, uint8_t volume) -> void;
-
-    auto stopChannel(uint8_t channel) -> void;
-
-    auto setChannelVolume(uint8_t channel, uint8_t volume) -> void;
+public: // public sound interface
+    auto playSound(uint16_t sound_id, uint8_t channel, uint8_t volume, uint8_t frequency) -> void;
 
 private: // private data
-    Audio&       _audio;
-    AudioChannel _channels[4];
-    uint32_t     _samplerate;
+    Audio&      _audio;
+    AudioSample _samples[4];
 };
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_MIXER_H__ */
+#endif /* __AW_SOUND_H__ */
