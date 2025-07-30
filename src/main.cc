@@ -59,8 +59,8 @@ extern System *stub ;//= System_SDL_create();
 #endif
 
 int main(int argc, char *argv[]) {
-	const char *dataPath = "./assets";
-	const char *savePath = "./assets";
+	const char *dataPath = "share/another-world";
+	const char *savePath = "share/another-world";
 	for (int i = 1; i < argc; ++i) {
 		bool opt = false;
 		if (strlen(argv[i]) >= 2) {
