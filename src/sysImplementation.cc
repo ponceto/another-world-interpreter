@@ -21,6 +21,27 @@
 #include "util.h"
 
 
+struct TextureLocker {
+    TextureLocker(SDL_Texture* lockable)
+        : texture(lockable)
+        , pixels(nullptr)
+        , pitch(0)
+    {
+        if(SDL_LockTexture(texture, nullptr, &pixels, &pitch) != 0) {
+            error("unable to lock texture");
+        }
+    }
+
+   ~TextureLocker()
+    {
+        SDL_UnlockTexture(texture);
+    }
+
+    SDL_Texture* texture;
+    void*        pixels;
+    int          pitch;
+};
+
 struct SDLStub : System {
 	typedef void (SDLStub::*ScaleProc)(uint16_t *dst, uint16_t dstPitch, const uint16_t *src, uint16_t srcPitch, uint16_t w, uint16_t h);
 
@@ -32,9 +53,9 @@ struct SDLStub : System {
 
 	int DEFAULT_SCALE = 3;
 
-	SDL_Surface *_screen = nullptr;
-	SDL_Window * _window = nullptr;
-	SDL_Renderer * _renderer = nullptr;
+	SDL_Window*   _window   = nullptr;
+	SDL_Renderer* _renderer = nullptr;
+	SDL_Texture*  _texture  = nullptr;
 	uint8_t _scale = DEFAULT_SCALE;
 
 	virtual ~SDLStub() {}
@@ -91,48 +112,43 @@ void SDLStub::setPalette(const uint8_t *p) {
     palette[i].a = 0xFF;
     p += 2;
   }
-  SDL_SetPaletteColors(_screen->format->palette, palette, 0, NUM_COLORS);
 }
 
 void SDLStub::prepareGfxMode() {
   int w = SCREEN_W;
   int h = SCREEN_H;
 
-  _window = SDL_CreateWindow("Another World", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w * _scale, h * _scale, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-  _renderer = SDL_CreateRenderer(_window, -1, 0);
-  _screen = SDL_CreateRGBSurface(SDL_SWSURFACE, w, h, 8, 0, 0, 0, 0);
-  if (!_screen) {
-    error("SDLStub::prepareGfxMode() unable to allocate _screen buffer");
-  }
-  // Upon resize during gameplay, the screen surface is re-created and a new palette is allocated.
-  // This will result in an all-white surface palette displaying a window full of white until a
-  // a palette is set by the VM.
-  // To avoid this issue, we save the last palette locally and re-upload it each time. On game start-up this
-  // is not requested.
-  SDL_SetPaletteColors(_screen->format->palette, palette, 0, NUM_COLORS);
+  _window = SDL_CreateWindow("Another World", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w * _scale, h * _scale, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+  _renderer = SDL_CreateRenderer(_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  _texture = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, w, h);
 }
 
 void SDLStub::updateDisplay(const uint8_t *src) {
-  uint16_t height = SCREEN_H;
-	uint8_t* p = (uint8_t*)_screen->pixels;
-
-	//For each line
-	while (height--) {
-		//One byte gives us two pixels, we only need to iterate w/2 times.
-		for (int i = 0; i < SCREEN_W / 2; ++i) {
-			//Extract two palette indices from upper byte and lower byte.
-			p[i * 2 + 0] = *(src + i) >> 4;
-			p[i * 2 + 1] = *(src + i) & 0xF;
+	/* update texture */ {
+		const TextureLocker texture(_texture);
+		const uint16_t screen_w = SCREEN_W / 2;
+		const uint16_t screen_h = SCREEN_H;
+		uint8_t*       dst      = reinterpret_cast<uint8_t*>(texture.pixels);
+		for(int y = screen_h; y != 0; --y) {
+			uint8_t* ptr = dst;
+			for(int x = screen_w; x != 0; --x) {
+				const uint8_t pixels = *src++;
+				SDL_Color& color1(palette[(pixels >> 4) & 0xF]);
+				SDL_Color& color2(palette[(pixels >> 0) & 0xF]);
+				*ptr++ = color1.r;
+				*ptr++ = color1.g;
+				*ptr++ = color1.b;
+				*ptr++ = color2.r;
+				*ptr++ = color2.g;
+				*ptr++ = color2.b;
+			}
+			dst += texture.pitch;
 		}
-		p += _screen->pitch;
-    src += SCREEN_W/2;
 	}
-
-  SDL_Texture* texture = SDL_CreateTextureFromSurface(_renderer, _screen);
-  SDL_RenderCopy(_renderer, texture, nullptr, nullptr);
-  SDL_RenderPresent(_renderer);
-  SDL_DestroyTexture(texture);
-
+	/* blit to screen */ {
+		SDL_RenderCopy(_renderer, _texture, nullptr, nullptr);
+		SDL_RenderPresent(_renderer);
+	}
 }
 
 void SDLStub::processEvents() {
@@ -279,19 +295,19 @@ void SDLStub::unlockMutex(void *mutex) {
 
 
 void SDLStub::cleanupGfxMode() {
-	if (_screen) {
-		SDL_FreeSurface(_screen);
-		_screen = nullptr;
+	if (_texture != nullptr) {
+		SDL_DestroyTexture(_texture);
+		_texture = nullptr;
 	}
 
-	if (_window) {
+	if (_renderer != nullptr) {
+		SDL_DestroyRenderer(_renderer);
+		_renderer = nullptr;
+	}
+
+	if (_window != nullptr) {
 		SDL_DestroyWindow(_window);
 		_window = nullptr;
-	}
-
-	if (_screen) {
-		SDL_FreeSurface(_screen);
-		_screen = nullptr;
 	}
 }
 
