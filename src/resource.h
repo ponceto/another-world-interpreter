@@ -83,6 +83,7 @@ struct Resource {
 	
 	Video *video;
 	const char *_dataDir;
+	const char *_dumpDir;
 	MemEntry _memList[150];
 	uint16_t _numMemList;
 	uint16_t currentPartId, requestedNextPart;
@@ -94,7 +95,7 @@ struct Resource {
 	uint8_t *segCinematic;
 	uint8_t *_segVideo2;
 
-	Resource(Video *vid, const char *dataDir);
+	Resource(Video *vid, const char *dataDir, const char *dumpDir);
 	
 	void readBank(const MemEntry *me, uint8_t *dstBuf);
 	void readEntries();
@@ -102,6 +103,8 @@ struct Resource {
 	void invalidateAll();
 	void invalidateRes();	
 	void loadPartsOrMemoryEntry(uint16_t num);
+	void dumpMemList();
+	void dumpMemEntry(uint16_t index, const MemEntry* entry);
 	void setupPart(uint16_t ptrId);
 	void allocMemBlock();
 	void freeMemBlock();

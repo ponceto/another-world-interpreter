@@ -21,12 +21,18 @@
 #include "sys.h"
 #include "util.h"
 
+static const char *g_dataDir = "share/another-world";
+static const char *g_saveDir = ".";
+static const char *g_dumpDir = "";
 
-static const char *USAGE = 
-	"Raw - Another World Interpreter\n"
-	"Usage: raw [OPTIONS]...\n"
-	"  --datapath=PATH   Path to where the game is installed (default './assets')\n"
-	"  --savepath=PATH   Path to where the save files are stored (default './assets')\n";
+static const char *USAGE = ""
+	"Usage: another-world.bin [OPTIONS]...\n"
+	"\n"
+	"  --datadir=PATH        dir to where the data files are stored (default '%s')\n"
+	"  --savedir=PATH        dir to where the save files are stored (default '%s')\n"
+	"  --dumpdir=PATH        dir to where the dump files are stored (default '%s')\n"
+	"\n"
+	;
 
 static bool parseOption(const char *arg, const char *longCmd, const char **opt) {
 	bool ret = false;
@@ -39,8 +45,8 @@ static bool parseOption(const char *arg, const char *longCmd, const char **opt) 
 	return ret;
 }
 
-static int run(System *system, const char *dataPath, const char *savePath) {
-	const std::unique_ptr<Engine> engine(new Engine(system, dataPath, savePath));
+static int run(System *system, const char *dataDir, const char *saveDir, const char *dumpDir) {
+	const std::unique_ptr<Engine> engine(new Engine(system, dataDir, saveDir, dumpDir));
 	if(engine) {
 		engine->run();
 	}
@@ -59,17 +65,16 @@ extern System *stub ;//= System_SDL_create();
 #endif
 
 int main(int argc, char *argv[]) {
-	const char *dataPath = "share/another-world";
-	const char *savePath = "share/another-world";
 	for (int i = 1; i < argc; ++i) {
 		bool opt = false;
 		if (strlen(argv[i]) >= 2) {
-			opt |= parseOption(argv[i], "datapath=", &dataPath);
-			opt |= parseOption(argv[i], "savepath=", &savePath);
+			opt |= parseOption(argv[i], "datadir=", &g_dataDir);
+			opt |= parseOption(argv[i], "savedir=", &g_saveDir);
+			opt |= parseOption(argv[i], "dumpdir=", &g_dumpDir);
 
 		}
 		if (!opt) {
-			printf("%s",USAGE);
+			printf(USAGE, g_dataDir, g_saveDir, g_dumpDir);
 			return 0;
 		}
 	}
@@ -77,7 +82,7 @@ int main(int argc, char *argv[]) {
 	//g_debugMask = DBG_INFO; // DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND
 	//g_debugMask = 0 ;//DBG_INFO |  DBG_VM | DBG_BANK | DBG_VIDEO | DBG_SER | DBG_SND ;
 
-	return run(stub, dataPath, savePath);
+	return run(stub, g_dataDir, g_saveDir, g_dumpDir);
 }
 
 

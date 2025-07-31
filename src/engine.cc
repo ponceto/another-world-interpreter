@@ -51,9 +51,9 @@ static void engineMainLoop(Engine* engine) {
 
 }
 
-Engine::Engine(System *paramSys, const char *dataDir, const char *saveDir)
-	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir), 
-	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _saveDir(saveDir), _stateSlot(0) {
+Engine::Engine(System *paramSys, const char *dataDir, const char *saveDir, const char *dumpDir)
+	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir, dumpDir), 
+	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _saveDir(saveDir), _dumpDir(dumpDir), _stateSlot(0) {
 	init();
 }
 

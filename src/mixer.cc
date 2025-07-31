@@ -21,17 +21,6 @@
 #include "sys.h"
 
 
-static int8_t addclamp(int a, int b) {
-	int add = a + b;
-	if (add < -128) {
-		add = -128;
-	}
-	else if (add > 127) {
-		add = 127;
-	}
-	return (int8_t)add;
-}
-
 Mixer::Mixer(System *stub) 
 	: sys(stub) {
 }
@@ -92,20 +81,27 @@ void Mixer::stopAll() {
 // Since there is no way to know when SDL will ask for a buffer fill, we need
 // to synchronize with a mutex so the channels remain stable during the execution
 // of this method.
-void Mixer::mix(int8_t *buf, int len) {
-	int8_t *pBuf;
-
+void Mixer::mix(float *buf, int len) {
 	const MutexStack lock(sys, _mutex);
 
-	//Clear the buffer since nothing garanty we are receiving clean memory.
-	memset(buf, 0, len);
+	auto addclamp = [](float a, float b) -> float
+	{
+		float val = a + b;
+		if (val < -1.0) {
+			val = -1.0;
+		}
+		if (val > +1.0) {
+			val = +1.0;
+		}
+		return val;
+	};
 
 	for (uint8_t i = 0; i < AUDIO_NUM_CHANNELS; ++i) {
 		MixerChannel *ch = &_channels[i];
 		if (!ch->active) 
 			continue;
 
-		pBuf = buf;
+		float *pBuf = buf;
 		for (int j = 0; j < len; ++j, ++pBuf) {
 
 			uint16_t p1, p2;
@@ -116,7 +112,7 @@ void Mixer::mix(int8_t *buf, int len) {
 			if (ch->chunk.loopLen != 0) {
 				if (p1 == ch->chunk.loopPos + ch->chunk.loopLen - 1) {
 					debug(DBG_SND, "Looping sample on channel %d", i);
-					ch->chunkPos = p2 = ch->chunk.loopPos;
+					p2 = ch->chunkPos = ch->chunk.loopPos;
 				} else {
 					p2 = p1 + 1;
 				}
@@ -133,24 +129,18 @@ void Mixer::mix(int8_t *buf, int len) {
 			int8_t b1 = *(int8_t *)(ch->chunk.data + p1);
 			int8_t b2 = *(int8_t *)(ch->chunk.data + p2);
 			int8_t b = (int8_t)((b1 * (0xFF - ilc) + b2 * ilc) >> 8);
+            float  f = static_cast<float>((int)b * ch->volume / 0x40) / 127.0;  //0x40=64
 
 			// set volume and clamp
-			*pBuf = addclamp(*pBuf, (int)b * ch->volume / 0x40);  //0x40=64
+			*pBuf = addclamp(*pBuf, f);
 		}
 		
 	}
-
-	// Convert signed 8-bit PCM to unsigned 8-bit PCM. The
-	// current version of SDL hangs when using signed 8-bit
-	// PCM in combination with the PulseAudio driver.
-	pBuf = buf;
-	for (int j = 0; j < len; ++j, ++pBuf) {
-		*(uint8_t *)pBuf = (*pBuf + 128);
-	}
 }
 
-void Mixer::mixCallback(void *param, uint8_t *buf, int len) {
-	((Mixer *)param)->mix((int8_t *)buf, len);
+void Mixer::mixCallback(void *data, uint8_t *buf, int len) {
+	memset(buf, 0, len);
+	reinterpret_cast<Mixer*>(data)->mix(reinterpret_cast<float*>(buf), len / sizeof(float));
 }
 
 void Mixer::saveOrLoad(Serializer &ser) {

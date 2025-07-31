@@ -24,8 +24,8 @@
 #include "util.h"
 #include "parts.h"
 
-Resource::Resource(Video *vid, const char *dataDir) 
-	: video(vid), _dataDir(dataDir), currentPartId(0),requestedNextPart(0) {
+Resource::Resource(Video *vid, const char *dataDir, const char *dumpDir) 
+	: video(vid), _dataDir(dataDir), _dumpDir(dumpDir), currentPartId(0),requestedNextPart(0) {
 }
 
 void Resource::readBank(const MemEntry *me, uint8_t *dstBuf) {
@@ -95,9 +95,9 @@ void Resource::readEntries() {
 		memEntry->unk10 = f.readUint16BE();
 		memEntry->size = f.readUint16BE();
 
-    if (memEntry->state == MEMENTRY_STATE_END_OF_MEMLIST) {
-      break;
-    }
+		if (memEntry->state == MEMENTRY_STATE_END_OF_MEMLIST) {
+			break;
+		}
 
 		//Memory tracking
 		if (memEntry->packedSize==memEntry->size)
@@ -218,6 +218,7 @@ void Resource::loadMarkedAsNeeded() {
 		}
 
 	}
+	dumpMemList();
 
 
 }
@@ -268,6 +269,149 @@ void Resource::loadPartsOrMemoryEntry(uint16_t resourceId) {
 	}
 
 }
+
+void Resource::dumpMemList() {
+	char filename[1024] = "";
+	uint32_t sound_packed            = 0;
+	uint32_t sound_unpacked          = 0;
+	uint32_t music_packed            = 0;
+	uint32_t music_unpacked          = 0;
+	uint32_t poly_anim_packed        = 0;
+	uint32_t poly_anim_unpacked      = 0;
+	uint32_t palette_packed          = 0;
+	uint32_t palette_unpacked        = 0;
+	uint32_t bytecode_packed         = 0;
+	uint32_t bytecode_unpacked       = 0;
+	uint32_t poly_cinematic_packed   = 0;
+	uint32_t poly_cinematic_unpacked = 0;
+	uint32_t unknown_packed          = 0;
+	uint32_t unknown_unpacked        = 0;
+	uint32_t total_packed            = 0;
+	uint32_t total_unpacked          = 0;
+
+	auto percent = [](uint32_t packed_size, uint32_t unpacked_size) -> int
+	{
+		if(unpacked_size == 0) {
+			return 0;
+		}
+		return 100 - ((100 * packed_size) / unpacked_size);
+	};
+
+	if((_dumpDir != nullptr) && (*_dumpDir != '\0')) {
+		::snprintf(filename, sizeof(filename), "%s/memlist.txt", _dumpDir);
+	}
+	if(filename[0] != '\0') {
+		FILE* file = ::fopen(filename, "w");
+		if(file != nullptr) {
+			uint16_t  index = 0;
+			uint16_t  count = _numMemList;
+			MemEntry* entry = _memList;
+			while (index < count) {
+				const char* type = nullptr;
+				switch(entry->type) {
+					case RT_SOUND:
+						type = "sound";
+						sound_packed   += entry->packedSize;
+						sound_unpacked += entry->size;
+						break;
+					case RT_MUSIC:
+						type = "music";
+						music_packed   += entry->packedSize;
+						music_unpacked += entry->size;
+						break;
+					case RT_POLY_ANIM:
+						type = "poly_anim";
+						poly_anim_packed   += entry->packedSize;
+						poly_anim_unpacked += entry->size;
+						break;
+					case RT_PALETTE:
+						type = "palette";
+						palette_packed   += entry->packedSize;
+						palette_unpacked += entry->size;
+						break;
+					case RT_BYTECODE:
+						type = "bytecode";
+						bytecode_packed   += entry->packedSize;
+						bytecode_unpacked += entry->size;
+						break;
+					case RT_POLY_CINEMATIC:
+						type = "poly_cinematic";
+						poly_cinematic_packed   += entry->packedSize;
+						poly_cinematic_unpacked += entry->size;
+						break;
+					default:
+						type = "unknown";
+						unknown_packed   += entry->packedSize;
+						unknown_unpacked += entry->size;
+						break;
+				}
+				total_packed   += entry->packedSize;
+				total_unpacked += entry->size;
+				::fprintf(file, "0x%02x %-14s bank=0x%02x offset=%-6d packed-size=%-5d unpacked-size=%-5d\n", index, type, entry->bankId, entry->bankOffset, entry->packedSize, entry->size);
+				if (entry->state == MEMENTRY_STATE_LOADED) {
+					dumpMemEntry(index, entry);
+				}
+				++index;
+				++entry;
+			}
+			::fprintf(file, "\n");
+			::fprintf(file, "total_sound          packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", sound_packed         , sound_unpacked         , percent(sound_packed         , sound_unpacked         ));
+			::fprintf(file, "total_music          packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", music_packed         , music_unpacked         , percent(music_packed         , music_unpacked         ));
+			::fprintf(file, "total_poly_anim      packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", poly_anim_packed     , poly_anim_unpacked     , percent(poly_anim_packed     , poly_anim_unpacked     ));
+			::fprintf(file, "total_palette        packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", palette_packed       , palette_unpacked       , percent(palette_packed       , palette_unpacked       ));
+			::fprintf(file, "total_bytecode       packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", bytecode_packed      , bytecode_unpacked      , percent(bytecode_packed      , bytecode_unpacked      ));
+			::fprintf(file, "total_poly_cinematic packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", poly_cinematic_packed, poly_cinematic_unpacked, percent(poly_cinematic_packed, poly_cinematic_unpacked));
+			::fprintf(file, "total_unknown        packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", unknown_packed       , unknown_unpacked       , percent(unknown_packed       , unknown_unpacked       ));
+			::fprintf(file, "total_data           packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", total_packed         , total_unpacked         , percent(total_packed         , total_unpacked         ));
+			::fflush(file);
+			file = (::fclose(file), nullptr);
+		}
+	}
+}
+
+void Resource::dumpMemEntry(uint16_t index, const MemEntry* entry) {
+	char filename[1024] = "";
+
+	if (entry->state != MEMENTRY_STATE_LOADED) {
+		return;
+	}
+	if((_dumpDir != nullptr) && (*_dumpDir != '\0')) {
+		const char* type = nullptr;
+		switch(entry->type) {
+			case RT_SOUND:
+				type = "sound";
+				break;
+			case RT_MUSIC:
+				type = "music";
+				break;
+			case RT_POLY_ANIM:
+				type = "poly_anim";
+				break;
+			case RT_PALETTE:
+				type = "palette";
+				break;
+			case RT_BYTECODE:
+				type = "bytecode";
+				break;
+			case RT_POLY_CINEMATIC:
+				type = "poly_cinematic";
+				break;
+			default:
+				type = "unknown";
+				break;
+		}
+		::snprintf(filename, sizeof(filename), "%s/%02x_%s.raw", _dumpDir, index, type);
+	}
+	if(filename[0] != '\0') {
+		FILE* file = ::fopen(filename, "w");
+		if(file != nullptr) {
+			::fwrite(entry->bufPtr, entry->size, 1, file);
+			::fflush(file);
+			file = (::fclose(file), nullptr);
+		}
+	}
+}
+
 
 /* Protection screen and cinematic don't need the player and enemies polygon data
    so _memList[video2Index] is never loaded for those parts of the game. When 

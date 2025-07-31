@@ -72,8 +72,14 @@ emrun ./bin/another-world.html
 
 ## COMMAND-LINE OPTIONS
 
-  - `--datapath=PATH` location of the game assets (default `share/another-world`)
-  - `--savepath=PATH` location of the game states (default `share/another-world`)
+```
+Usage: another-world.bin [OPTIONS]...
+
+  --datadir=PATH        dir to where the data files are stored (default 'share/another-world')
+  --savedir=PATH        dir to where the save files are stored (default '.')
+  --dumpdir=PATH        dir to where the dump files are stored (default '')
+
+```
 
 ## GAME CONTROLS
 

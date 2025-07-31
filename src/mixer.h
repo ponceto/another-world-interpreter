@@ -60,7 +60,7 @@ struct Mixer {
 	void stopChannel(uint8_t channel);
 	void setChannelVolume(uint8_t channel, uint8_t volume);
 	void stopAll();
-	void mix(int8_t *buf, int len);
+	void mix(float *buf, int len);
 
 	static void mixCallback(void *param, uint8_t *buf, int len);
 
