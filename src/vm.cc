@@ -34,16 +34,22 @@ VirtualMachine::VirtualMachine(Mixer *mix, Resource *resParameter, SfxPlayer *pl
 void VirtualMachine::init() {
 
 	memset(vmVariables, 0, sizeof(vmVariables));
-	vmVariables[0x54] = 0x81;
-	vmVariables[VM_VARIABLE_RANDOM_SEED] = time(0);
+	vmVariables[VM_VARIABLE_RANDOM_SEED] = ::time(nullptr);
 #ifdef BYPASS_PROTECTION
-   // these 3 variables are set by the game code
-   vmVariables[0xBC] = 0x10;
-   vmVariables[0xC6] = 0x80;
-   vmVariables[0xF2] = 4000;
-   // these 2 variables are set by the engine executable
-   vmVariables[0xDC] = 33;
+	// these 3 variables are set by the game code
+	vmVariables[0xBC] = 0x0010;
+	vmVariables[0xC6] = 0x0080;
+	vmVariables[0xF2] = 0x0FA0;
+	// these 2 variables are set by the engine executable
+	vmVariables[0xDC] = 0x0021;
 #endif
+
+#ifdef OUT_OF_THIS_WORLD
+	vmVariables[0x54] = 0x0081; // Out Of This World
+#else
+	vmVariables[0x54] = 0x0001; // Another World
+#endif
+	vmVariables[0xE4] = 0x0014; // DOS Version
 
 	player->_markVar = &vmVariables[VM_VARIABLE_MUS_MARK];
 }
@@ -141,16 +147,16 @@ void VirtualMachine::op_jnz() {
 
 void VirtualMachine::op_condJmp() {
 	uint8_t opcode = _scriptPtr.fetchByte();
-  const uint8_t var = _scriptPtr.fetchByte();
-  int16_t b = vmVariables[var];
+	const uint8_t var = _scriptPtr.fetchByte();
+	int16_t b = vmVariables[var];
 	int16_t a;
 
 	if (opcode & 0x80) {
 		a = vmVariables[_scriptPtr.fetchByte()];
 	} else if (opcode & 0x40) {
-    a = _scriptPtr.fetchWord();
+		a = _scriptPtr.fetchWord();
 	} else {
-    a = _scriptPtr.fetchByte();
+		a = _scriptPtr.fetchByte();
 	}
 	debug(DBG_VM, "VirtualMachine::op_condJmp(%d, 0x%02X, 0x%02X)", opcode, b, a);
 
@@ -159,13 +165,13 @@ void VirtualMachine::op_condJmp() {
 	switch (opcode & 7) {
 	case 0:	// jz
 		expr = (b == a);
-#ifdef BYPASS_PROTECTION
+#if BYPASS_PROTECTION
       if (res->currentPartId == 16000) {
         //
         // 0CB8: jmpIf(VAR(0x29) == VAR(0x1E), @0CD3)
         // ...
         //
-        if (b == 0x29 && (opcode & 0x80) != 0) {
+        if (var == 0x29 && (opcode & 0x80) != 0) {
           // 4 symbols
           vmVariables[0x29] = vmVariables[0x1E];
           vmVariables[0x2A] = vmVariables[0x1F];
@@ -388,6 +394,11 @@ void VirtualMachine::initForPart(uint16_t partId) {
 	//WTF is that ?
 	vmVariables[0xE4] = 0x14;
 
+#ifdef BYPASS_PROTECTION
+	if(partId == GAME_PART1) {
+		partId = GAME_PART2;
+	}
+#endif
 	res->setupPart(partId);
 
 	//Set all thread to inactive (pc at 0xFFFF or 0xFFFE )
@@ -663,11 +674,6 @@ void VirtualMachine::inp_handleSpecialKeys() {
 		if (res->currentPartId != GAME_PART_LAST && res->currentPartId != GAME_PART_FIRST) {
 			res->requestedNextPart = GAME_PART_LAST;
 		}
-	}
-
-	// XXX
-	if (vmVariables[0xC9] == 1) {
-		warning("VirtualMachine::inp_handleSpecialKeys() unhandled case (vmVariables[0xC9] == 1)");
 	}
 
 }

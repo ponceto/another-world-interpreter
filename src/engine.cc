@@ -96,24 +96,7 @@ void Engine::init() {
 
 	player.init();
 
-	uint16_t part = GAME_PART1;  // This game part is the protection screen
-#ifdef BYPASS_PROTECTION
-  part = GAME_PART2;
-#endif
-  vm.initForPart(part);
-
-
-
-  // Try to cheat here. You can jump anywhere but the VM crashes afterward.
-	// Starting somewhere is probably not enough, the variables and calls return are probably missing.
-	//vm.initForPart(GAME_PART2); // Skip protection screen and go directly to intro
-	//vm.initForPart(GAME_PART3); // CRASH
-	//vm.initForPart(GAME_PART4); // Start directly in jail but then crash
-	//vm.initForPart(GAME_PART5);   //CRASH
-	//vm.initForPart(GAME_PART6);   // Start in the battlechar but CRASH afteward
-	//vm.initForPart(GAME_PART7); //CRASH
-	//vm.initForPart(GAME_PART8); //CRASH
-	//vm.initForPart(GAME_PART9); // Green screen not doing anything
+	vm.initForPart(GAME_PART1);
 }
 
 void Engine::finish() {
