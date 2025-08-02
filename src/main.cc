@@ -210,10 +210,10 @@ int main(int argc, char *argv[]) {
    ---------------------------------
    Total RT_SOUND    size: 585052  ( 47%)
    Total RT_MUSIC    size:   3540  (  0%)
-   Total RT_POLY_ANIM   size: 106676  (  9%)
-   Total RT_PALETTE      size:  11032  (  1%)
+   Total RT_BITMAP   size: 106676  (  9%)
+   Total RT_PALETTE  size:  11032  (  1%)
    Total RT_BYTECODE size: 135948  ( 11%)
-   Total RT_POLY_CINEMATIC     size: 291008  ( 24%)
+   Total RT_POLYGON  size: 291008  ( 24%)
 
    As usual sounds are the most consuming assets (Quake1,Quake2 etc.....)
 

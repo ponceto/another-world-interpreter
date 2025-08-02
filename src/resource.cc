@@ -45,10 +45,10 @@ static const char *resTypeToString(unsigned int type)
 	{
 		"RT_SOUND",
 		"RT_MUSIC",
-		"RT_POLY_ANIM",
+		"RT_BITMAP",
 		"RT_PALETTE",
 		"RT_BYTECODE",
-		"RT_POLY_CINEMATIC"
+		"RT_POLYGON"
 	};
 	if (type >= (sizeof(resTypes) / sizeof(const char *)))
 		return "RT_UNKNOWN";
@@ -189,7 +189,7 @@ void Resource::loadMarkedAsNeeded() {
 		// "That's what she said"
 
 		uint8_t *loadDestination = NULL;
-		if (me->type == RT_POLY_ANIM) {
+		if (me->type == RT_BITMAP) {
 			loadDestination = _vidCurPtr;
 		} else {
 			loadDestination = _scriptCurPtr;
@@ -207,8 +207,8 @@ void Resource::loadMarkedAsNeeded() {
 		} else {
 			debug(DBG_BANK, "Resource::load() bufPos=%X size=%X type=%X pos=%X bankId=%X", loadDestination - _memPtrStart, me->packedSize, me->type, me->bankOffset, me->bankId);
 			readBank(me, loadDestination);
-			if(me->type == RT_POLY_ANIM) {
-        video->copyPage(_vidCurPtr);
+			if(me->type == RT_BITMAP) {
+				video->copyPage(_vidCurPtr);
 				me->state = MEMENTRY_STATE_NOT_NEEDED;
 			} else {
 				me->bufPtr = loadDestination;
@@ -227,7 +227,7 @@ void Resource::invalidateRes() {
 	MemEntry *me = _memList;
 	uint16_t i = _numMemList;
 	while (i--) {
-		if (me->type <= RT_POLY_ANIM || me->type > 6) {  // 6 WTF ?!?! ResType goes up to 5 !!
+		if (me->type <= RT_BITMAP || me->type > 6) {  // 6 WTF ?!?! ResType goes up to 5 !!
 			me->state = MEMENTRY_STATE_NOT_NEEDED;
 		}
 		++me;
@@ -272,22 +272,22 @@ void Resource::loadPartsOrMemoryEntry(uint16_t resourceId) {
 
 void Resource::dumpMemList() {
 	char filename[1024] = "";
-	uint32_t sound_packed            = 0;
-	uint32_t sound_unpacked          = 0;
-	uint32_t music_packed            = 0;
-	uint32_t music_unpacked          = 0;
-	uint32_t poly_anim_packed        = 0;
-	uint32_t poly_anim_unpacked      = 0;
-	uint32_t palette_packed          = 0;
-	uint32_t palette_unpacked        = 0;
-	uint32_t bytecode_packed         = 0;
-	uint32_t bytecode_unpacked       = 0;
-	uint32_t poly_cinematic_packed   = 0;
-	uint32_t poly_cinematic_unpacked = 0;
-	uint32_t unknown_packed          = 0;
-	uint32_t unknown_unpacked        = 0;
-	uint32_t total_packed            = 0;
-	uint32_t total_unpacked          = 0;
+	uint32_t sound_packed      = 0;
+	uint32_t sound_unpacked    = 0;
+	uint32_t music_packed      = 0;
+	uint32_t music_unpacked    = 0;
+	uint32_t bitmap_packed     = 0;
+	uint32_t bitmap_unpacked   = 0;
+	uint32_t palette_packed    = 0;
+	uint32_t palette_unpacked  = 0;
+	uint32_t bytecode_packed   = 0;
+	uint32_t bytecode_unpacked = 0;
+	uint32_t polygon_packed    = 0;
+	uint32_t polygon_unpacked  = 0;
+	uint32_t unknown_packed    = 0;
+	uint32_t unknown_unpacked  = 0;
+	uint32_t total_packed      = 0;
+	uint32_t total_unpacked    = 0;
 
 	auto percent = [](uint32_t packed_size, uint32_t unpacked_size) -> int
 	{
@@ -319,10 +319,10 @@ void Resource::dumpMemList() {
 						music_packed   += entry->packedSize;
 						music_unpacked += entry->size;
 						break;
-					case RT_POLY_ANIM:
-						type = "poly_anim";
-						poly_anim_packed   += entry->packedSize;
-						poly_anim_unpacked += entry->size;
+					case RT_BITMAP:
+						type = "bitmap";
+						bitmap_packed   += entry->packedSize;
+						bitmap_unpacked += entry->size;
 						break;
 					case RT_PALETTE:
 						type = "palette";
@@ -334,10 +334,10 @@ void Resource::dumpMemList() {
 						bytecode_packed   += entry->packedSize;
 						bytecode_unpacked += entry->size;
 						break;
-					case RT_POLY_CINEMATIC:
-						type = "poly_cinematic";
-						poly_cinematic_packed   += entry->packedSize;
-						poly_cinematic_unpacked += entry->size;
+					case RT_POLYGON:
+						type = "polygon";
+						polygon_packed   += entry->packedSize;
+						polygon_unpacked += entry->size;
 						break;
 					default:
 						type = "unknown";
@@ -355,14 +355,14 @@ void Resource::dumpMemList() {
 				++entry;
 			}
 			::fprintf(file, "\n");
-			::fprintf(file, "total_sound          packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", sound_packed         , sound_unpacked         , percent(sound_packed         , sound_unpacked         ));
-			::fprintf(file, "total_music          packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", music_packed         , music_unpacked         , percent(music_packed         , music_unpacked         ));
-			::fprintf(file, "total_poly_anim      packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", poly_anim_packed     , poly_anim_unpacked     , percent(poly_anim_packed     , poly_anim_unpacked     ));
-			::fprintf(file, "total_palette        packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", palette_packed       , palette_unpacked       , percent(palette_packed       , palette_unpacked       ));
-			::fprintf(file, "total_bytecode       packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", bytecode_packed      , bytecode_unpacked      , percent(bytecode_packed      , bytecode_unpacked      ));
-			::fprintf(file, "total_poly_cinematic packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", poly_cinematic_packed, poly_cinematic_unpacked, percent(poly_cinematic_packed, poly_cinematic_unpacked));
-			::fprintf(file, "total_unknown        packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", unknown_packed       , unknown_unpacked       , percent(unknown_packed       , unknown_unpacked       ));
-			::fprintf(file, "total_data           packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", total_packed         , total_unpacked         , percent(total_packed         , total_unpacked         ));
+			::fprintf(file, "total_sound    packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", sound_packed   , sound_unpacked   , percent(sound_packed   , sound_unpacked   ));
+			::fprintf(file, "total_music    packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", music_packed   , music_unpacked   , percent(music_packed   , music_unpacked   ));
+			::fprintf(file, "total_bitmap   packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", bitmap_packed  , bitmap_unpacked  , percent(bitmap_packed  , bitmap_unpacked  ));
+			::fprintf(file, "total_palette  packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", palette_packed , palette_unpacked , percent(palette_packed , palette_unpacked ));
+			::fprintf(file, "total_bytecode packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", bytecode_packed, bytecode_unpacked, percent(bytecode_packed, bytecode_unpacked));
+			::fprintf(file, "total_polygon  packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", polygon_packed , polygon_unpacked , percent(polygon_packed , polygon_unpacked ));
+			::fprintf(file, "total_unknown  packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", unknown_packed , unknown_unpacked , percent(unknown_packed , unknown_unpacked ));
+			::fprintf(file, "total_data     packed-size=%-7d unpacked-size=%-7d compression-ratio=%02d%%\n", total_packed   , total_unpacked   , percent(total_packed   , total_unpacked   ));
 			::fflush(file);
 			file = (::fclose(file), nullptr);
 		}
@@ -384,8 +384,8 @@ void Resource::dumpMemEntry(uint16_t index, const MemEntry* entry) {
 			case RT_MUSIC:
 				type = "music";
 				break;
-			case RT_POLY_ANIM:
-				type = "poly_anim";
+			case RT_BITMAP:
+				type = "bitmap";
 				break;
 			case RT_PALETTE:
 				type = "palette";
@@ -393,8 +393,8 @@ void Resource::dumpMemEntry(uint16_t index, const MemEntry* entry) {
 			case RT_BYTECODE:
 				type = "bytecode";
 				break;
-			case RT_POLY_CINEMATIC:
-				type = "poly_cinematic";
+			case RT_POLYGON:
+				type = "polygon";
 				break;
 			default:
 				type = "unknown";
@@ -431,7 +431,7 @@ void Resource::setupPart(uint16_t partId) {
 
 	uint8_t paletteIndex = memListParts[memListPartIndex][MEMLIST_PART_PALETTE];
 	uint8_t codeIndex    = memListParts[memListPartIndex][MEMLIST_PART_CODE];
-	uint8_t videoCinematicIndex  = memListParts[memListPartIndex][MEMLIST_PART_POLY_CINEMATIC];
+	uint8_t videoCinematicIndex  = memListParts[memListPartIndex][MEMLIST_PART_POLYGON];
 	uint8_t video2Index  = memListParts[memListPartIndex][MEMLIST_PART_VIDEO2];
 
 	// Mark all resources as located on harddrive.
