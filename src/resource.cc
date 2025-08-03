@@ -25,7 +25,24 @@
 #include "parts.h"
 
 Resource::Resource(Video *vid, const char *dataDir, const char *dumpDir) 
-	: video(vid), _dataDir(dataDir), _dumpDir(dumpDir), currentPartId(0),requestedNextPart(0) {
+	: video(vid)
+	, _dataDir(dataDir)
+	, _dumpDir(dumpDir)
+	, _memList()
+	, _numMemList()
+	, currentPartId()
+	, requestedNextPart()
+	, _memPtrStart()
+	, _scriptBakPtr()
+	, _scriptCurPtr()
+	, _vidBakPtr()
+	, _vidCurPtr()
+	, _useSegVideo2()
+	, segPalettes()
+	, segBytecode()
+	, segCinematic()
+	, _segVideo2()
+{
 }
 
 void Resource::readBank(const MemEntry *me, uint8_t *dstBuf) {

@@ -86,10 +86,14 @@ struct Resource {
 	const char *_dumpDir;
 	MemEntry _memList[150];
 	uint16_t _numMemList;
-	uint16_t currentPartId, requestedNextPart;
-	uint8_t *_memPtrStart, *_scriptBakPtr, *_scriptCurPtr, *_vidBakPtr, *_vidCurPtr;
+	uint16_t currentPartId;
+	uint16_t requestedNextPart;
+	uint8_t *_memPtrStart;
+	uint8_t *_scriptBakPtr;
+	uint8_t *_scriptCurPtr;
+	uint8_t *_vidBakPtr;
+	uint8_t *_vidCurPtr;
 	bool _useSegVideo2;
-
 	uint8_t *segPalettes;
 	uint8_t *segBytecode;
 	uint8_t *segCinematic;
