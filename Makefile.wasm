@@ -71,7 +71,6 @@ another_world_SOURCES = \
 	src/mixer.cc \
 	src/parts.cc \
 	src/resource.cc \
-	src/serializer.cc \
 	src/sfxplayer.cc \
 	src/staticres.cc \
 	src/sysImplementation.cc \
@@ -90,7 +89,6 @@ another_world_HEADERS = \
 	src/mixer.h \
 	src/parts.h \
 	src/resource.h \
-	src/serializer.h \
 	src/sfxplayer.h \
 	src/sys.h \
 	src/util.h \
@@ -105,7 +103,6 @@ another_world_OBJECTS = \
 	src/mixer.o \
 	src/parts.o \
 	src/resource.o \
-	src/serializer.o \
 	src/sfxplayer.o \
 	src/staticres.o \
 	src/sysImplementation.o \

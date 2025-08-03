@@ -17,7 +17,6 @@
  */
 
 #include "mixer.h"
-#include "serializer.h"
 #include "sys.h"
 
 
@@ -142,22 +141,3 @@ void Mixer::mixCallback(void *data, uint8_t *buf, int len) {
 	memset(buf, 0, len);
 	reinterpret_cast<Mixer*>(data)->mix(reinterpret_cast<float*>(buf), len / sizeof(float));
 }
-
-void Mixer::saveOrLoad(Serializer &ser) {
-	const MutexStack lock(sys, _mutex);
-	for (int i = 0; i < AUDIO_NUM_CHANNELS; ++i) {
-		MixerChannel *ch = &_channels[i];
-		Serializer::Entry entries[] = {
-			SE_INT(&ch->active, Serializer::SES_BOOL, VER(2)),
-			SE_INT(&ch->volume, Serializer::SES_INT8, VER(2)),
-			SE_INT(&ch->chunkPos, Serializer::SES_INT32, VER(2)),
-			SE_INT(&ch->chunkInc, Serializer::SES_INT32, VER(2)),
-			SE_PTR(&ch->chunk.data, VER(2)),
-			SE_INT(&ch->chunk.len, Serializer::SES_INT16, VER(2)),
-			SE_INT(&ch->chunk.loopPos, Serializer::SES_INT16, VER(2)),
-			SE_INT(&ch->chunk.loopLen, Serializer::SES_INT16, VER(2)),
-			SE_END()
-		};
-		ser.saveOrLoadEntries(entries);
-	}
-};

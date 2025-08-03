@@ -39,7 +39,6 @@ struct Polygon {
 };
 
 struct Resource;
-struct Serializer;
 struct System;
 
 // This is used to detect the end of  _stringsTableEng and _stringsTableDemo
@@ -106,8 +105,6 @@ struct Video {
 	void copyPage(const uint8_t *src);
 	void changePal(uint8_t pal);
 	void updateDisplay(uint8_t page);
-	
-	void saveOrLoad(Serializer &ser);
 };
 
 #endif

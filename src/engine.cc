@@ -21,7 +21,6 @@
 #endif
 #include "engine.h"
 #include "file.h"
-#include "serializer.h"
 #include "sys.h"
 #include "parts.h"
 
@@ -37,8 +36,6 @@ static void engineMainLoop(Engine* engine) {
 
 	engine->vm.inp_updatePlayer();
 
-	engine->processInput();
-
 	engine->vm.hostFrame();
 
 #ifdef __EMSCRIPTEN__
@@ -51,9 +48,9 @@ static void engineMainLoop(Engine* engine) {
 
 }
 
-Engine::Engine(System *paramSys, const char *dataDir, const char *saveDir, const char *dumpDir)
+Engine::Engine(System *paramSys, const char *dataDir, const char *dumpDir)
 	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir, dumpDir), 
-	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _saveDir(saveDir), _dumpDir(dumpDir), _stateSlot(0) {
+	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _dumpDir(dumpDir) {
 	init();
 }
 
@@ -104,91 +101,4 @@ void Engine::finish() {
 	mixer.free();
 	res.freeMemBlock();
 	sys->destroy();
-}
-
-void Engine::processInput() {
-	if (sys->input.load) {
-		loadGameState(_stateSlot);
-		sys->input.load = false;
-	}
-	if (sys->input.save) {
-		saveGameState(_stateSlot, "quicksave");
-		sys->input.save = false;
-	}
-	if (sys->input.stateSlot != 0) {
-		int8_t slot = _stateSlot + sys->input.stateSlot;
-		if (slot >= 0 && slot < MAX_SAVE_SLOTS) {
-			_stateSlot = slot;
-			debug(DBG_INFO, "Current game state slot is %d", _stateSlot);
-		}
-		sys->input.stateSlot = 0;
-	}
-}
-
-void Engine::makeGameStateName(uint8_t slot, char *buf) {
-	sprintf(buf, "raw.s%02d", slot);
-}
-
-void Engine::saveGameState(uint8_t slot, const char *desc) {
-	char stateFile[20];
-	makeGameStateName(slot, stateFile);
-	File f(true);
-	if (!f.open(stateFile, _saveDir, "wb")) {
-		warning("Unable to save state file '%s'", stateFile);
-	} else {
-		// header
-		f.writeUint32BE(AWSV);
-		f.writeUint16BE(Serializer::CUR_VER);
-		f.writeUint16BE(0);
-		char hdrdesc[32];
-		strncpy(hdrdesc, desc, sizeof(hdrdesc) - 1);
-		f.write(hdrdesc, sizeof(hdrdesc));
-		// contents
-		Serializer s(&f, Serializer::SM_SAVE, res._memPtrStart);
-		vm.saveOrLoad(s);
-		res.saveOrLoad(s);
-		video.saveOrLoad(s);
-		player.saveOrLoad(s);
-		mixer.saveOrLoad(s);
-		if (f.ioErr()) {
-			warning("I/O error when saving game state");
-		} else {
-			debug(DBG_INFO, "Saved state to slot %d", _stateSlot);
-		}
-	}
-}
-
-void Engine::loadGameState(uint8_t slot) {
-	char stateFile[20];
-	makeGameStateName(slot, stateFile);
-	File f(true);
-	if (!f.open(stateFile, _saveDir, "rb")) {
-		warning("Unable to open state file '%s'", stateFile);
-	} else {
-		uint32_t id = f.readUint32BE();
-		if (id != AWSV) {
-			warning("Bad savegame format");
-		} else {
-			// mute
-			player.stop();
-			mixer.stopAll();
-			// header
-			uint16_t ver = f.readUint16BE();
-			f.readUint16BE();
-			char hdrdesc[32];
-			f.read(hdrdesc, sizeof(hdrdesc));
-			// contents
-			Serializer s(&f, Serializer::SM_LOAD, res._memPtrStart, ver);
-			vm.saveOrLoad(s);
-			res.saveOrLoad(s);
-			video.saveOrLoad(s);
-			player.saveOrLoad(s);
-			mixer.saveOrLoad(s);
-		}
-		if (f.ioErr()) {
-			warning("I/O error when loading game state");
-		} else {
-			debug(DBG_INFO, "Loaded state from slot %d", _stateSlot);
-		}
-	}
 }

@@ -36,7 +36,6 @@ struct MixerChannel {
 	uint32_t chunkInc;
 };
 
-struct Serializer;
 struct System;
 
 #define AUDIO_NUM_CHANNELS 4
@@ -63,8 +62,6 @@ struct Mixer {
 	void mix(float *buf, int len);
 
 	static void mixCallback(void *param, uint8_t *buf, int len);
-
-	void saveOrLoad(Serializer &ser);
 };
 
 #endif

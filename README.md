@@ -76,7 +76,6 @@ emrun ./bin/another-world.html
 Usage: another-world.bin [OPTIONS]...
 
   --datadir=PATH        dir to where the data files are stored (default 'share/another-world')
-  --savedir=PATH        dir to where the save files are stored (default '.')
   --dumpdir=PATH        dir to where the dump files are stored (default '')
 
 ```
@@ -88,11 +87,6 @@ Usage: another-world.bin [OPTIONS]...
   - `Tab` change the window size
   - `c` enter a code to jump at a specific level
   - `p` pause the game
-  - `Ctrl l` load game state
-  - `Ctrl s` save game state
-  - `Ctrl +` next game state slot
-  - `Ctrl -` prev game state slot
-  - `Ctrl x` exit the game
   - `Escape` exit the game
 
 ## RESOURCES

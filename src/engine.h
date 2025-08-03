@@ -29,10 +29,6 @@
 struct System;
 
 struct Engine {
-	enum {
-		MAX_SAVE_SLOTS = 100
-	};
-
 	System *sys;
 	VirtualMachine vm;
 	Mixer mixer;
@@ -40,21 +36,14 @@ struct Engine {
 	SfxPlayer player;
 	Video video;
 	const char *_dataDir;
-	const char *_saveDir;
 	const char *_dumpDir;
-	uint8_t _stateSlot;
 
-	Engine(System *stub, const char *dataDir, const char *saveDir, const char *dumpDir);
+	Engine(System *stub, const char *dataDir, const char *dumpDir);
 	~Engine();
 
 	void run();
 	void init();
 	void finish();
-	void processInput();
-	
-	void makeGameStateName(uint8_t slot, char *buf);
-	void saveGameState(uint8_t slot, const char *desc);
-	void loadGameState(uint8_t slot);
 };
 
 #endif

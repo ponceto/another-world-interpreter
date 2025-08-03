@@ -47,7 +47,6 @@ enum ScriptVars {
 
 struct Mixer;
 struct Resource;
-struct Serializer;
 struct SfxPlayer;
 struct System;
 struct Video;
@@ -132,8 +131,6 @@ struct VirtualMachine {
 	
 	void snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel);
 	void snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos);
-	
-	void saveOrLoad(Serializer &ser);
 };
 
 #endif

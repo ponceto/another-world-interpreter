@@ -56,7 +56,6 @@ struct MemEntry {
     See MEMENTRY_STATE_* #defines above.
 */
 
-struct Serializer;
 struct Video;
 
 struct Resource {
@@ -112,8 +111,6 @@ struct Resource {
 	void setupPart(uint16_t ptrId);
 	void allocMemBlock();
 	void freeMemBlock();
-	
-	void saveOrLoad(Serializer &ser);
 };
 
 #endif

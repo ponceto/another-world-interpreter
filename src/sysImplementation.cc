@@ -176,26 +176,9 @@ void SDLStub::processEvents() {
 			case SDLK_RETURN:
 				input.button = false;
 				break;
-			case SDLK_ESCAPE:
-				input.quit = true;
-				break;
 			}
 			break;
 		case SDL_KEYDOWN:
-			if (ev.key.keysym.mod & KMOD_CTRL) {
-				if (ev.key.keysym.sym == SDLK_x) {
-					input.quit = true;
-				} else if (ev.key.keysym.sym == SDLK_s) {
-					input.save = true;
-				} else if (ev.key.keysym.sym == SDLK_l) {
-					input.load = true;
-				} else if (ev.key.keysym.sym == SDLK_KP_PLUS) {
-					input.stateSlot = 1;
-				} else if (ev.key.keysym.sym == SDLK_KP_MINUS) {
-					input.stateSlot = -1;
-				}
-				break;
-			}
 			input.lastChar = ev.key.keysym.sym;
 			switch(ev.key.keysym.sym) {
 			case SDLK_LEFT:
@@ -224,6 +207,9 @@ void SDLStub::processEvents() {
 				_scale = _scale + 1;
 				if (_scale > 4) { _scale = 1; }
 				switchGfxMode();
+				break;
+			case SDLK_ESCAPE:
+				input.quit = true;
 				break;
 			default:
 				break;

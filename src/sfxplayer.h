@@ -49,7 +49,6 @@ struct SfxPattern {
 
 struct Mixer;
 struct Resource;
-struct Serializer;
 struct System;
 
 struct SfxPlayer {
@@ -77,8 +76,6 @@ struct SfxPlayer {
 	void handlePattern(uint8_t channel, const uint8_t *patternData);
 
 	static uint32_t eventsCallback(uint32_t interval, void *param);
-
-	void saveOrLoad(Serializer &ser);
 };
 
 #endif

@@ -19,7 +19,6 @@
 #include "sfxplayer.h"
 #include "mixer.h"
 #include "resource.h"
-#include "serializer.h"
 #include "sys.h"
 
 
@@ -204,23 +203,4 @@ uint32_t SfxPlayer::eventsCallback(uint32_t interval, void *param) {
 	SfxPlayer *p = (SfxPlayer *)param;
 	p->handleEvents();
 	return p->_delay;
-}
-
-void SfxPlayer::saveOrLoad(Serializer &ser) {
-	sys->lockMutex(_mutex);
-	Serializer::Entry entries[] = {
-		SE_INT(&_delay, Serializer::SES_INT8, VER(2)),
-		SE_INT(&_resNum, Serializer::SES_INT16, VER(2)),
-		SE_INT(&_sfxMod.curPos, Serializer::SES_INT16, VER(2)),
-		SE_INT(&_sfxMod.curOrder, Serializer::SES_INT8, VER(2)),
-		SE_END()
-	};
-	ser.saveOrLoadEntries(entries);
-	sys->unlockMutex(_mutex);
-	if (ser._mode == Serializer::SM_LOAD && _resNum != 0) {
-		uint16_t delay = _delay;
-		loadSfxModule(_resNum, 0, _sfxMod.curOrder);
-		_delay = delay;
-		_timerId = sys->addTimer(_delay, eventsCallback, this);
-	}
 }

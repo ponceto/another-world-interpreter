@@ -19,7 +19,6 @@
 #include "resource.h"
 #include "bank.h"
 #include "file.h"
-#include "serializer.h"
 #include "video.h"
 #include "util.h"
 #include "parts.h"
@@ -497,59 +496,4 @@ void Resource::allocMemBlock() {
 
 void Resource::freeMemBlock() {
 	free(_memPtrStart);
-}
-
-void Resource::saveOrLoad(Serializer &ser) {
-	uint8_t loadedList[64];
-	if (ser._mode == Serializer::SM_SAVE) {
-		memset(loadedList, 0, sizeof(loadedList));
-		uint8_t *p = loadedList;
-		uint8_t *q = _memPtrStart;
-		while (1) {
-			MemEntry *it = _memList;
-			MemEntry *me = 0;
-			uint16_t num = _numMemList;
-			while (num--) {
-				if (it->state == MEMENTRY_STATE_LOADED && it->bufPtr == q) {
-					me = it;
-				}
-				++it;
-			}
-			if (me == 0) {
-				break;
-			} else {
-				assert(p < loadedList + 64);
-				*p++ = me - _memList;
-				q += me->size;
-			}
-		}
-	}
-
-	Serializer::Entry entries[] = {
-		SE_ARRAY(loadedList, 64, Serializer::SES_INT8, VER(1)),
-		SE_INT(&currentPartId, Serializer::SES_INT16, VER(1)),
-		SE_PTR(&_scriptBakPtr, VER(1)),
-		SE_PTR(&_scriptCurPtr, VER(1)),
-		SE_PTR(&_vidBakPtr, VER(1)),
-		SE_PTR(&_vidCurPtr, VER(1)),
-		SE_INT(&_useSegVideo2, Serializer::SES_BOOL, VER(1)),
-		SE_PTR(&segPalettes, VER(1)),
-		SE_PTR(&segBytecode, VER(1)),
-		SE_PTR(&segCinematic, VER(1)),
-		SE_PTR(&_segVideo2, VER(1)),
-		SE_END()
-	};
-
-	ser.saveOrLoadEntries(entries);
-	if (ser._mode == Serializer::SM_LOAD) {
-		uint8_t *p = loadedList;
-		uint8_t *q = _memPtrStart;
-		while (*p) {
-			MemEntry *me = &_memList[*p++];
-			readBank(me, q);
-			me->bufPtr = q;
-			me->state = MEMENTRY_STATE_LOADED;
-			q += me->size;
-		}
-	}	
 }

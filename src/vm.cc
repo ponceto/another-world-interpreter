@@ -21,7 +21,6 @@
 #include "mixer.h"
 #include "resource.h"
 #include "video.h"
-#include "serializer.h"
 #include "sfxplayer.h"
 #include "sys.h"
 #include "parts.h"
@@ -717,15 +716,4 @@ void VirtualMachine::snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos)
 	} else {
 		player->stop();
 	}
-}
-
-void VirtualMachine::saveOrLoad(Serializer &ser) {
-	Serializer::Entry entries[] = {
-		SE_ARRAY(vmVariables, 0x100, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(_scriptStackCalls, 0x100, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(threadsData, 0x40 * 2, Serializer::SES_INT16, VER(1)),
-		SE_ARRAY(vmIsChannelActive, 0x40 * 2, Serializer::SES_INT8, VER(1)),
-		SE_END()
-	};
-	ser.saveOrLoadEntries(entries);
 }

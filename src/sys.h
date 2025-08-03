@@ -39,8 +39,6 @@ struct PlayerInput {
 	bool pause;
 	bool quit;
 	char lastChar;
-	bool save, load;
-	int8_t stateSlot;
 };
 
 /*

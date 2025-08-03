@@ -18,7 +18,6 @@
 
 #include "video.h"
 #include "resource.h"
-#include "serializer.h"
 #include "sys.h"
 
 
@@ -586,36 +585,4 @@ void Video::updateDisplay(uint8_t pageId) {
 	//A: Because one byte gives two palette indices so
 	//   we only need to move 320/2 per line.
   sys->updateDisplay(_curPagePtr2);
-}
-
-void Video::saveOrLoad(Serializer &ser) {
-	uint8_t mask = 0;
-	if (ser._mode == Serializer::SM_SAVE) {
-		for (int i = 0; i < 4; ++i) {
-			if (_pages[i] == _curPagePtr1)
-				mask |= i << 4;
-			if (_pages[i] == _curPagePtr2)
-				mask |= i << 2;
-			if (_pages[i] == _curPagePtr3)
-				mask |= i << 0;
-		}		
-	}
-	Serializer::Entry entries[] = {
-		SE_INT(&currentPaletteId, Serializer::SES_INT8, VER(1)),
-		SE_INT(&paletteIdRequested, Serializer::SES_INT8, VER(1)),
-		SE_INT(&mask, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[0], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[1], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[2], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_ARRAY(_pages[3], Video::VID_PAGE_SIZE, Serializer::SES_INT8, VER(1)),
-		SE_END()
-	};
-	ser.saveOrLoadEntries(entries);
-
-	if (ser._mode == Serializer::SM_LOAD) {
-		_curPagePtr1 = _pages[(mask >> 4) & 0x3];
-		_curPagePtr2 = _pages[(mask >> 2) & 0x3];
-		_curPagePtr3 = _pages[(mask >> 0) & 0x3];
-		changePal(currentPaletteId);
-	}
 }
