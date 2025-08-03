@@ -1,10 +1,12 @@
 # ANOTHER WORLD INTERPRETER
 
-This is a quick and dirty fork and port of the [Another World Bytecode Interpreter](https://github.com/fabiensanglard/Another-World-Bytecode-Interpreter) with [SDL2](https://www.libsdl.org/), targeting Linux and [WASM](https://en.wikipedia.org/wiki/WebAssembly) with [Emscripten](https://emscripten.org/).
+This is another Another World Bytecode Interpreter with [SDL](https://www.libsdl.org/), targeting Linux, BSD and [WASM](https://en.wikipedia.org/wiki/WebAssembly) with [Emscripten](https://emscripten.org/).
 
 ![Another World](share/another-world/another-world.png)
 
-You can play Another World in your browser by clicking [here](https://www.emaxilde.net/assets/games/another-world/another-world.html).
+This is a fork of Fabien Sanglard's project, itself a fork of Gregory Montoir's original implementation.
+
+You can play Another World directly in your browser by clicking [here](https://www.emaxilde.net/assets/games/another-world/another-world.html).
 
 ## COMPILE AND RUN FOR LINUX
 
@@ -18,10 +20,6 @@ Under Debian and derivatives (Ubuntu, Mint, ...):
 apt-get install build-essential libsdl2-dev zlib1g-dev
 ```
 
-### Install the data files
-
-The required game data files must be copied into the [share/another-world](share/another-world) directory.
-
 ### Build the project
 
 ```
@@ -33,6 +31,10 @@ or
 ```
 ./build.sh linux
 ```
+
+### Install the data files
+
+The original game data files must be copied into the [share/another-world](share/another-world) directory.
 
 ### Run the project
 
@@ -48,10 +50,6 @@ In order to build the WASM port, You must install the [Emscripten](https://emscr
 
   - [Download and install](https://emscripten.org/docs/getting_started/downloads.html)
 
-### Install the data files
-
-The required game data files must be copied into the [share/another-world](share/another-world) directory.
-
 ### Build the project
 
 ```
@@ -64,6 +62,10 @@ or
 ./build.sh wasm
 ```
 
+### Install the data files
+
+The original game data files must be copied into the [share/another-world](share/another-world) directory.
+
 ### Run the project
 
 ```
@@ -73,10 +75,25 @@ emrun ./bin/another-world.html
 ## COMMAND-LINE OPTIONS
 
 ```
-Usage: another-world.bin [OPTIONS]...
+Usage: another-world.bin [OPTIONS...]
 
-  --datadir=PATH        dir to where the data files are stored (default 'share/another-world')
-  --dumpdir=PATH        dir to where the dump files are stored (default '')
+Options:
+
+  -h, --help            display this help and exit
+
+  --datadir=PATH        directory where data files are stored
+  --dumpdir=PATH        directory where dump files are stored
+
+  --quiet               quiet mode
+  --debug               debug mode
+  --debug-all           debug all subsystems
+  --debug-engine        debug the engine subsystem
+  --debug-resources     debug the resources subsystem
+  --debug-video         debug the video subsystem
+  --debug-audio         debug the audio subsystem
+  --debug-music         debug the music subsystem
+  --debug-input         debug the input subsystem
+  --debug-vm            debug the vm subsystem
 
 ```
 
@@ -144,6 +161,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>
 
 ## DISCLAIMER
 
-The original data files are protected under the copyrights of their authors and are not distributed with this project.
+The original game data files are protected under the copyrights of their authors and are not distributed with this project.
 
-Please do not distribute the original data files with this project.
+```
+Please do not distribute the original data game files with this project.
+```
+

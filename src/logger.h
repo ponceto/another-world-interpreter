@@ -1,5 +1,5 @@
 /*
- * parts.h - Copyright (c) 2004-2025
+ * logger.h - Copyright (c) 2004-2025
  *
  * Gregory Montoir, Fabien Sanglard, Olivier Poncet
  *
@@ -16,71 +16,69 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef __AW_PARTS_H__
-#define __AW_PARTS_H__
+#ifndef __AW_LOGGER_H__
+#define __AW_LOGGER_H__
 
 // ---------------------------------------------------------------------------
-// game parts macros
+// Panic
 // ---------------------------------------------------------------------------
 
-#define GAME_PART_FIRST 0x3E80
-#define GAME_PART1      0x3E80
-#define GAME_PART2      0x3E81
-#define GAME_PART3      0x3E82
-#define GAME_PART4      0x3E83
-#define GAME_PART5      0x3E84
-#define GAME_PART6      0x3E85
-#define GAME_PART7      0x3E86
-#define GAME_PART8      0x3E87
-#define GAME_PART9      0x3E88
-#define GAME_PART10     0x3E89
-#define GAME_PART_LAST  0x3E89
-#define GAME_NUM_PARTS  10
-
-#define MEMLIST_PART_PALETTE  0
-#define MEMLIST_PART_BYTECODE 1
-#define MEMLIST_PART_POLYGON  2
-#define MEMLIST_PART_VIDEO2   3
-
-// ---------------------------------------------------------------------------
-// GameParts
-// ---------------------------------------------------------------------------
-
-struct GameParts
+class Panic
 {
-    static const uint16_t data[GAME_NUM_PARTS][4];
+public: // public interface
+    Panic() = default;
+
+    virtual ~Panic() = default;
+
+    virtual auto operator()() const -> void;
 };
 
 // ---------------------------------------------------------------------------
-// Font
+// debug masks
 // ---------------------------------------------------------------------------
 
-struct Font
+enum
 {
-    static const uint8_t data[];
+    LOG_DEBUG     = (1u <<  0),
+    LOG_PRINT     = (1u <<  1),
+    LOG_ALERT     = (1u <<  2),
+    LOG_ERROR     = (1u <<  3),
+    LOG_FATAL     = (1u <<  4),
+    SYS_ENGINE    = (1u <<  5),
+    SYS_RESOURCES = (1u <<  6),
+    SYS_VIDEO     = (1u <<  7),
+    SYS_AUDIO     = (1u <<  8),
+    SYS_MUSIC     = (1u <<  9),
+    SYS_INPUT     = (1u << 10),
+    SYS_VM        = (1u << 11),
 };
 
 // ---------------------------------------------------------------------------
-// StringEntry
+// debug mask
 // ---------------------------------------------------------------------------
 
-struct StringEntry
-{
-    uint16_t    id;
-    const char* string;
-};
+extern FILE*    g_loggerOut;
+extern FILE*    g_loggerErr;
+extern uint32_t g_loggerMask;
 
 // ---------------------------------------------------------------------------
-// StringDictionary
+// logging functions
 // ---------------------------------------------------------------------------
 
-struct StringDictionary
-{
-    static const StringEntry data[];
-};
+extern auto log_debug(uint32_t mask, const char* format, ...) -> void;
+
+extern auto log_debug(const char* format, ...) -> void;
+
+extern auto log_print(const char* format, ...) -> void;
+
+extern auto log_alert(const char* format, ...) -> void;
+
+extern auto log_error(const char* format, ...) -> void;
+
+extern auto log_fatal(const char* format, ...) -> void;
 
 // ---------------------------------------------------------------------------
 // End-Of-File
 // ---------------------------------------------------------------------------
 
-#endif /* __AW_PARTS_H__ */
+#endif /* __AW_LOGGER_H__ */

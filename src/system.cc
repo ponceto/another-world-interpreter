@@ -1,25 +1,49 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * system.cc - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdint>
+#include <climits>
+#include <cassert>
+#include <ctime>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
 #include <SDL2/SDL.h>
-#include "sys.h"
-#include "util.h"
+#include "logger.h"
+#include "system.h"
 
+// ---------------------------------------------------------------------------
+// XXX
+// ---------------------------------------------------------------------------
 
 struct TextureLocker {
     TextureLocker(SDL_Texture* lockable)
@@ -28,7 +52,7 @@ struct TextureLocker {
         , pitch(0)
     {
         if(SDL_LockTexture(texture, nullptr, &pixels, &pitch) != 0) {
-            error("unable to lock texture");
+            log_fatal("unable to lock texture");
         }
     }
 
@@ -48,7 +72,6 @@ struct SDLStub : System {
 	enum {
 		SCREEN_W = 320,
 		SCREEN_H = 200,
-		SOUND_SAMPLE_RATE = 22050
 	};
 
 	int DEFAULT_SCALE = 3;
@@ -59,29 +82,25 @@ struct SDLStub : System {
 	uint8_t _scale = DEFAULT_SCALE;
 
 	virtual ~SDLStub() {}
-	virtual void init(const char *title);
-	virtual void destroy();
+	virtual void init();
+	virtual void fini();
 	virtual void setPalette(const uint8_t *buf);
 	virtual void updateDisplay(const uint8_t *src);
 	virtual void processEvents();
-	virtual void sleep(uint32_t duration);
+	virtual void sleepFor(uint32_t duration);
 	virtual uint32_t getTimeStamp();
 	virtual void startAudio(AudioCallback callback, void *param);
 	virtual void stopAudio();
-	virtual uint32_t getOutputSampleRate();
+	virtual uint32_t getAudioSampleRate();
 	virtual int addTimer(uint32_t delay, TimerCallback callback, void *param);
 	virtual void removeTimer(int timerId);
-	virtual void *createMutex();
-	virtual void destroyMutex(void *mutex);
-	virtual void lockMutex(void *mutex);
-	virtual void unlockMutex(void *mutex);
 
 	void prepareGfxMode();
 	void cleanupGfxMode();
 	void switchGfxMode();
 };
 
-void SDLStub::init(const char *title) {
+void SDLStub::init() {
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER);
 //	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY, SDL_DEFAULT_REPEAT_INTERVAL);
 	SDL_ShowCursor(SDL_DISABLE);
@@ -89,12 +108,11 @@ void SDLStub::init(const char *title) {
 	SDL_ShowCursor( SDL_ENABLE );
 	SDL_CaptureMouse(SDL_TRUE);
 
-	memset(&input, 0, sizeof(input));
 	_scale = DEFAULT_SCALE;
 	prepareGfxMode();
 }
 
-void SDLStub::destroy() {
+void SDLStub::fini() {
 	cleanupGfxMode();
 	SDL_Quit();
 }
@@ -155,94 +173,101 @@ void SDLStub::processEvents() {
 	SDL_Event ev;
 	while(SDL_PollEvent(&ev)) {
 		switch (ev.type) {
-		case SDL_QUIT:
-			input.quit = true;
-			break;
-		case SDL_KEYUP:
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				input.dirMask &= ~PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				input.dirMask &= ~PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
-				input.dirMask &= ~PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
-				input.dirMask &= ~PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
-				input.button = false;
-				break;
-			}
-			break;
-		case SDL_KEYDOWN:
-			input.lastChar = ev.key.keysym.sym;
-			switch(ev.key.keysym.sym) {
-			case SDLK_LEFT:
-				input.dirMask |= PlayerInput::DIR_LEFT;
-				break;
-			case SDLK_RIGHT:
-				input.dirMask |= PlayerInput::DIR_RIGHT;
-				break;
-			case SDLK_UP:
-				input.dirMask |= PlayerInput::DIR_UP;
-				break;
-			case SDLK_DOWN:
-				input.dirMask |= PlayerInput::DIR_DOWN;
-				break;
-			case SDLK_SPACE:
-			case SDLK_RETURN:
-				input.button = true;
-				break;
-			case SDLK_c:
-				input.code = true;
-				break;
-			case SDLK_p:
-				input.pause = true;
-				break;
-			case SDLK_TAB :
-				_scale = _scale + 1;
-				if (_scale > 4) { _scale = 1; }
-				switchGfxMode();
-				break;
-			case SDLK_ESCAPE:
+			case SDL_QUIT:
 				input.quit = true;
+				break;
+			case SDL_KEYUP:
+				switch(ev.key.keysym.sym) {
+					case SDLK_UP:
+						input.dpad &= ~PlayerInput::DIR_UP;
+						break;
+					case SDLK_DOWN:
+						input.dpad &= ~PlayerInput::DIR_DOWN;
+						break;
+					case SDLK_LEFT:
+						input.dpad &= ~PlayerInput::DIR_LEFT;
+						break;
+					case SDLK_RIGHT:
+						input.dpad &= ~PlayerInput::DIR_RIGHT;
+						break;
+					case SDLK_SPACE:
+					case SDLK_RETURN:
+						input.dpad &= ~PlayerInput::DIR_BUTTON;
+						break;
+					default:
+						break;
+				}
+				break;
+			case SDL_KEYDOWN:
+				switch(ev.key.keysym.sym) {
+					case SDLK_UP:
+						input.dpad |= PlayerInput::DIR_UP;
+						break;
+					case SDLK_DOWN:
+						input.dpad |= PlayerInput::DIR_DOWN;
+						break;
+					case SDLK_LEFT:
+						input.dpad |= PlayerInput::DIR_LEFT;
+						break;
+					case SDLK_RIGHT:
+						input.dpad |= PlayerInput::DIR_RIGHT;
+						break;
+					case SDLK_SPACE:
+					case SDLK_RETURN:
+						input.dpad |= PlayerInput::DIR_BUTTON;
+						break;
+					case SDLK_c:
+						input.code = true;
+						break;
+					case SDLK_p:
+                        if(input.pause == false) {
+                            input.pause = true;
+                        }
+                        else {
+                            input.pause = false;
+                        }
+						break;
+					case SDLK_TAB :
+						if ((_scale = _scale + 1) > 4) {
+                            _scale = 1;
+                        }
+						switchGfxMode();
+						break;
+					case SDLK_ESCAPE:
+						input.quit = true;
+						break;
+					default:
+						break;
+				}
 				break;
 			default:
 				break;
-			}
-			break;
-		default:
-			break;
 		}
 	}
 }
 
-void SDLStub::sleep(uint32_t duration) {
+void SDLStub::sleepFor(uint32_t duration) {
 	SDL_Delay(duration);
 }
 
 uint32_t SDLStub::getTimeStamp() {
-	return SDL_GetTicks();	
+	return SDL_GetTicks();
 }
 
 void SDLStub::startAudio(AudioCallback callback, void *param) {
 	SDL_AudioSpec desired;
 	memset(&desired, 0, sizeof(desired));
 
-	desired.freq = SOUND_SAMPLE_RATE;
+	desired.freq = DEFAULT_AUDIO_SAMPLE_RATE;
 	desired.format = AUDIO_F32SYS;
 	desired.channels = 1;
-	desired.samples = SOUND_SAMPLE_RATE / 25;
+	desired.samples = DEFAULT_AUDIO_SAMPLE_RATE / 25;
 	desired.callback = callback;
 	desired.userdata = param;
 	if (SDL_OpenAudio(&desired, NULL) == 0) {
 		SDL_PauseAudio(0);
 	} else {
-		error("SDLStub::startAudio() unable to open sound device");
+		log_fatal("SDLStub::startAudio() unable to open sound device");
 	}
 }
 
@@ -250,8 +275,8 @@ void SDLStub::stopAudio() {
 	SDL_CloseAudio();
 }
 
-uint32_t SDLStub::getOutputSampleRate() {
-	return SOUND_SAMPLE_RATE;
+uint32_t SDLStub::getAudioSampleRate() {
+	return DEFAULT_AUDIO_SAMPLE_RATE;
 }
 
 int SDLStub::addTimer(uint32_t delay, TimerCallback callback, void *param) {
@@ -261,24 +286,6 @@ int SDLStub::addTimer(uint32_t delay, TimerCallback callback, void *param) {
 void SDLStub::removeTimer(int timerId) {
 	SDL_RemoveTimer(timerId);
 }
-
-void *SDLStub::createMutex() {
-	return SDL_CreateMutex();
-}
-
-void SDLStub::destroyMutex(void *mutex) {
-	SDL_DestroyMutex((SDL_mutex *)mutex);
-}
-
-void SDLStub::lockMutex(void *mutex) {
-	SDL_mutexP((SDL_mutex *)mutex);
-}
-
-void SDLStub::unlockMutex(void *mutex) {
-	SDL_mutexV((SDL_mutex *)mutex);
-}
-
-
 
 void SDLStub::cleanupGfxMode() {
 	if (_texture != nullptr) {
@@ -305,3 +312,6 @@ void SDLStub::switchGfxMode() {
 SDLStub sysImplementation;
 System *stub = &sysImplementation;
 
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------

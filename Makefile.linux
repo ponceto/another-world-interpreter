@@ -28,7 +28,7 @@ CFLAGS   = -std=c99 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
 CXX      = g++
 CXXFLAGS = -std=c++14 $(OPTLEVEL) $(WARNINGS) $(EXTRAS)
 CPP      = cpp
-CPPFLAGS = -I. -I$(TOPDIR)/src -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -DAUTO_DETECT_PLATFORM -DBYPASS_PROTECTION
+CPPFLAGS = -I. -I$(TOPDIR)/src -D_DEFAULT_SOURCE -D_FORTIFY_SOURCE=2 -DHAVE_CONFIG_H
 LD       = g++
 LDFLAGS  = -L.
 CP       = cp
@@ -65,51 +65,54 @@ clean: clean_another_world
 another_world_PROGRAM = bin/another-world.bin
 
 another_world_SOURCES = \
-	src/bank.cc \
-	src/engine.cc \
-	src/file.cc \
-	src/mixer.cc \
-	src/parts.cc \
-	src/resource.cc \
-	src/sfxplayer.cc \
-	src/staticres.cc \
-	src/sysImplementation.cc \
-	src/util.cc \
-	src/video.cc \
-	src/vm.cc \
 	src/main.cc \
+	src/logger.cc \
+	src/bytekiller.cc \
+	src/file.cc \
+	src/intern.cc \
+	src/parts.cc \
+	src/data.cc \
+	src/system.cc \
+	src/engine.cc \
+	src/resources.cc \
+	src/video.cc \
+	src/audio.cc \
+	src/music.cc \
+	src/vm.cc \
 	$(NULL)
 
 another_world_HEADERS = \
-	src/bank.h \
-	src/endian.h \
-	src/engine.h \
+	src/main.h \
+	src/logger.h \
+	src/bytekiller.h \
 	src/file.h \
 	src/intern.h \
-	src/mixer.h \
 	src/parts.h \
-	src/resource.h \
-	src/sfxplayer.h \
-	src/sys.h \
-	src/util.h \
+	src/data.h \
+	src/system.h \
+	src/engine.h \
+	src/resources.h \
 	src/video.h \
+	src/audio.h \
+	src/music.h \
 	src/vm.h \
 	$(NULL)
 
 another_world_OBJECTS = \
-	src/bank.o \
-	src/engine.o \
-	src/file.o \
-	src/mixer.o \
-	src/parts.o \
-	src/resource.o \
-	src/sfxplayer.o \
-	src/staticres.o \
-	src/sysImplementation.o \
-	src/util.o \
-	src/video.o \
-	src/vm.o \
 	src/main.o \
+	src/logger.o \
+	src/bytekiller.o \
+	src/file.o \
+	src/intern.o \
+	src/parts.o \
+	src/data.o \
+	src/system.o \
+	src/engine.o \
+	src/resources.o \
+	src/video.o \
+	src/audio.o \
+	src/music.o \
+	src/vm.o \
 	$(NULL)
 
 another_world_LDFLAGS = \

@@ -1,55 +1,48 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * vm.h - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#ifndef __LOGIC_H__
-#define __LOGIC_H__
+#ifndef __AW_VIRTUALMACHINE_H__
+#define __AW_VIRTUALMACHINE_H__
 
 #include "intern.h"
+
+// ---------------------------------------------------------------------------
+// XXX
+// ---------------------------------------------------------------------------
 
 #define VM_NUM_THREADS 64
 #define VM_NUM_VARIABLES 256
 #define VM_NO_SETVEC_REQUESTED 0xFFFF
 #define VM_INACTIVE_THREAD    0xFFFF
 
-
 enum ScriptVars {
-		VM_VARIABLE_RANDOM_SEED          = 0x3C,
-		
-		VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
-
-		VM_VARIABLE_HERO_POS_UP_DOWN     = 0xE5,
-
-		VM_VARIABLE_MUS_MARK             = 0xF4,
-
-		VM_VARIABLE_SCROLL_Y             = 0xF9, // = 239
-		VM_VARIABLE_HERO_ACTION          = 0xFA,
-		VM_VARIABLE_HERO_POS_JUMP_DOWN   = 0xFB,
-		VM_VARIABLE_HERO_POS_LEFT_RIGHT  = 0xFC,
-		VM_VARIABLE_HERO_POS_MASK        = 0xFD,
-		VM_VARIABLE_HERO_ACTION_POS_MASK = 0xFE,
-		VM_VARIABLE_PAUSE_SLICES         = 0xFF
-	};
-
-struct Mixer;
-struct Resource;
-struct SfxPlayer;
-struct System;
-struct Video;
+    VM_VARIABLE_RANDOM_SEED          = 0x3C,
+    VM_VARIABLE_LAST_KEYCHAR         = 0xDA,
+    VM_VARIABLE_HERO_POS_UP_DOWN     = 0xE5,
+    VM_VARIABLE_MUS_MARK             = 0xF4,
+    VM_VARIABLE_SCROLL_Y             = 0xF9, // = 239
+    VM_VARIABLE_HERO_ACTION          = 0xFA,
+    VM_VARIABLE_HERO_POS_JUMP_DOWN   = 0xFB,
+    VM_VARIABLE_HERO_POS_LEFT_RIGHT  = 0xFC,
+    VM_VARIABLE_HERO_POS_MASK        = 0xFD,
+    VM_VARIABLE_HERO_ACTION_POS_MASK = 0xFE,
+    VM_VARIABLE_PAUSE_SLICES         = 0xFF
+};
 
 //For threadsData navigation
 #define PC_OFFSET 0
@@ -61,76 +54,86 @@ struct Video;
 #define REQUESTED_STATE 1
 #define NUM_THREAD_FIELDS 2
 
-struct VirtualMachine {
+class VirtualMachine
+{
+public:
+    //This table is used to play a sound
+    static const uint16_t frequencyTable[];
 
-	// The type of entries in opcodeTable. This allows "fast" branching
-	typedef void (VirtualMachine::*OpcodeStub)();
-	static const OpcodeStub opcodeTable[];
+    Engine& engine;
+    uint32_t _currTimeStamp;
+    uint32_t _nextTimeStamp;
+    uint32_t _prevTimeStamp;
+    ByteCode _bytecode;
 
-	//This table is used to play a sound
-	static const uint16_t frequenceTable[];
 
-	Mixer *mixer;
-	Resource *res;
-	SfxPlayer *player;
-	Video *video;
-	System *sys;
+    int16_t vmVariables[VM_NUM_VARIABLES];
+    uint16_t _scriptStackCalls[VM_NUM_THREADS];
+    uint16_t threadsData[NUM_DATA_FIELDS][VM_NUM_THREADS];
 
-	int16_t vmVariables[VM_NUM_VARIABLES];
-	uint16_t _scriptStackCalls[VM_NUM_THREADS];
-	uint16_t threadsData[NUM_DATA_FIELDS][VM_NUM_THREADS];
+    // This array is used:
+    //     0 to save the channel's instruction pointer
+    //     when the channel release control (this happens on a break).
+    //     1 When a setVec is requested for the next vm frame.
+    uint8_t vmIsChannelActive[NUM_THREAD_FIELDS][VM_NUM_THREADS];
 
-	// This array is used: 
-	//     0 to save the channel's instruction pointer 
-	//     when the channel release control (this happens on a break).
-	//     1 When a setVec is requested for the next vm frame.
-	uint8_t vmIsChannelActive[NUM_THREAD_FIELDS][VM_NUM_THREADS];
+    uint8_t _stackPtr;
 
-	Ptr _scriptPtr;
-	uint8_t _stackPtr;
-	bool gotoNextThread;
+    VirtualMachine(Engine& engine);
+    void init();
+    void fini();
 
-	VirtualMachine(Mixer *mix, Resource *res, SfxPlayer *ply, Video *vid, System *stub);
-	void init();
-	
-	void op_movConst();
-	void op_mov();
-	void op_add();
-	void op_addConst();
-	void op_call();
-	void op_ret();
-	void op_pauseThread();
-	void op_jmp();
-	void op_setSetVect();
-	void op_jnz();
-	void op_condJmp();
-	void op_setPalette();
-	void op_resetThread();
-	void op_selectVideoPage();
-	void op_fillVideoPage();
-	void op_copyVideoPage();
-	void op_blitFramebuffer();
-	void op_killThread();	
-	void op_drawString();
-	void op_sub();
-	void op_and();
-	void op_or();
-	void op_shl();
-	void op_shr();
-	void op_playSound();
-	void op_updateMemList();
-	void op_playMusic();
+    auto getNextTimeStamp() -> uint32_t
+    {
+        return _nextTimeStamp;
+    }
 
-	void initForPart(uint16_t partId);
-	void checkThreadRequests();
-	void hostFrame();
-	void executeThread();
+    void op_movi();
+    void op_movw();
+    void op_addw();
+    void op_addi();
+    void op_call();
+    void op_ret();
+    void op_yield();
+    void op_jmp();
+    void op_setvec();
+    void op_jnz();
+    void op_cjmp();
+    void op_setpal();
+    void op_reset();
+    void op_setpage();
+    void op_fill();
+    void op_copy();
+    void op_blit();
+    void op_kill();
+    void op_print();
+    void op_subw();
+    void op_andi();
+    void op_iori();
+    void op_shli();
+    void op_shri();
+    void op_sound();
+    void op_loadres();
+    void op_music();
+    void op_trap(uint8_t opcode);
+    void op_poly1(uint8_t opcode);
+    void op_poly2(uint8_t opcode);
 
-	void inp_updatePlayer();
-	void inp_handleSpecialKeys();
-	
-	void snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel);
-	void snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos);
+    void initForPart(uint16_t partId);
+    void checkThreadRequests();
+    void schedule();
+    void hostFrame();
+    void executeThread();
+
+    void inp_updatePlayer();
+    void inp_handleSpecialKeys();
+
+    void snd_playSound(uint16_t resNum, uint8_t freq, uint8_t vol, uint8_t channel);
+    void snd_playMusic(uint16_t resNum, uint16_t delay, uint8_t pos);
 };
 
-#endif
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------
+
+#endif /* __AW_VIRTUALMACHINE_H__ */

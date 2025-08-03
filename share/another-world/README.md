@@ -1,8 +1,10 @@
 # ANOTHER WORLD INTERPRETER
 
-This directory contains the data files.
+This directory should contain the original game data files.
 
 ## LIST OF REQUIRED FILES
+
+Simply drop the original game data files into this directory.
 
 The required files are:
 
@@ -23,7 +25,9 @@ The required files are:
 
 ## DISCLAIMER
 
-The original data files are protected under the copyrights of their authors.
+The original game data files are protected under the copyrights of their authors and are not distributed with this project.
 
-Please don't distribute original files with this project.
+```
+Please do not distribute the original data game files with this project.
+```
 

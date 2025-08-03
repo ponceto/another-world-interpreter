@@ -1,104 +1,134 @@
-/* Raw - Another World Interpreter
- * Copyright (C) 2004 Gregory Montoir
+/*
+ * engine.cc - Copyright (c) 2004-2025
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version 2
- * of the License, or (at your option) any later version.
-
+ * Gregory Montoir, Fabien Sanglard, Olivier Poncet
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 2 of the License, or
+ * (at your option) any later version.
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
-
+ *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#include <cerrno>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <cstdint>
+#include <climits>
+#include <cassert>
+#include <ctime>
+#include <algorithm>
+#include <stdexcept>
+#include <iostream>
+#include <utility>
+#include <memory>
+#include <string>
+#include <vector>
+#include <thread>
+#include <mutex>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#include "logger.h"
 #include "engine.h"
-#include "file.h"
-#include "sys.h"
-#include "parts.h"
 
-static constexpr uint32_t AWSV = (static_cast<uint32_t>('A') << 24)
-		                       | (static_cast<uint32_t>('W') << 16)
-		                       | (static_cast<uint32_t>('S') <<  8)
-		                       | (static_cast<uint32_t>('V') <<  0)
-		                       ;
+// ---------------------------------------------------------------------------
+// Engine
+// ---------------------------------------------------------------------------
 
-static void engineMainLoop(Engine* engine) {
+Engine::Engine(System& stub, const std::string& dataDirectory, const std::string& dumpDirectory)
+    : SubSystem(*this)
+    , dataDir(dataDirectory)
+    , dumpDir(dumpDirectory)
+    , system(stub)
+    , resources(*this)
+    , video(*this)
+    , audio(*this)
+    , music(*this)
+    , vm(*this)
+{
+}
 
-	engine->vm.checkThreadRequests();
+auto Engine::init() -> void
+{
+    log_debug(SYS_ENGINE, "initializing...");
+    system.init();
+    resources.init();
+    video.init();
+    audio.init();
+    music.init();
+    vm.init();
+    log_debug(SYS_ENGINE, "initialized!");
+}
 
-	engine->vm.inp_updatePlayer();
+auto Engine::fini() -> void
+{
+    log_debug(SYS_ENGINE, "finalizing...");
+    vm.fini();
+    music.fini();
+    audio.fini();
+    video.fini();
+    resources.fini();
+    system.fini();
+    log_debug(SYS_ENGINE, "finalized!");
+}
 
-	engine->vm.hostFrame();
-
+auto Engine::run() -> void
+{
+    auto iterate = +[](Engine* engine) -> void
+    {
+        engine->system.processEvents();
+        engine->vm.inp_updatePlayer();
+        engine->vm.hostFrame();
 #ifdef __EMSCRIPTEN__
-	if (engine->sys->input.quit) {
-		engine = (delete engine, nullptr);
-		emscripten_cancel_main_loop();
-		emscripten_force_exit(EXIT_SUCCESS);
-	}
+        if(engine->system.input.quit != false) {
+            log_debug(SYS_ENGINE, "stopped!");
+            engine->fini();
+            engine = (delete engine, nullptr);
+            ::emscripten_cancel_main_loop();
+            ::emscripten_force_exit(EXIT_SUCCESS);
+        }
 #endif
-
-}
-
-Engine::Engine(System *paramSys, const char *dataDir, const char *dumpDir)
-	: sys(paramSys), vm(&mixer, &res, &player, &video, sys), mixer(sys), res(&video, dataDir, dumpDir), 
-	player(&mixer, &res, sys), video(&res, sys), _dataDir(dataDir), _dumpDir(dumpDir) {
-	init();
-}
-
-void Engine::run() {
+    };
 
 #ifdef __EMSCRIPTEN__
-	emscripten_set_main_loop_arg(reinterpret_cast<em_arg_callback_func>(&engineMainLoop), this, 0, 1);
+    auto loop = [&]() -> void
+    {
+        init();
+        ::emscripten_set_main_loop_arg(reinterpret_cast<em_arg_callback_func>(iterate), this, 0, 1);
+    };
 #else
-	while (!sys->input.quit) {
-
-		engineMainLoop(this);
-
-	}
+    auto loop = [&]() -> void
+    {
+        init();
+        log_debug(SYS_ENGINE, "running...");
+        while(system.input.quit == false) {
+            const auto currTimeStamp = getTimeStamp();
+            const auto nextTimeStamp = vm.getNextTimeStamp();
+            if(nextTimeStamp > currTimeStamp) {
+                sleepFor((nextTimeStamp - currTimeStamp));
+            }
+            iterate(this);
+        }
+        log_debug(SYS_ENGINE, "stopped!");
+        fini();
+    };
 #endif
 
-
+    return loop();
 }
 
-Engine::~Engine(){
-
-	finish();
-}
-
-
-void Engine::init() {
-
-
-	//Init system
-	sys->init("Out Of This World");
-
-	video.init();
-
-	res.allocMemBlock();
-
-	res.readEntries();
-
-	vm.init();
-
-	mixer.init();
-
-	player.init();
-
-	vm.initForPart(GAME_PART1);
-}
-
-void Engine::finish() {
-	player.free();
-	mixer.free();
-	res.freeMemBlock();
-	sys->destroy();
-}
+// ---------------------------------------------------------------------------
+// End-Of-File
+// ---------------------------------------------------------------------------
